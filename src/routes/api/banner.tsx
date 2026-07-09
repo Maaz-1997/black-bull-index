@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ImageResponse } from "@cf-wasm/og";
 import { BannerImage, parseCardParams, buildFallbackSvg } from "@/lib/og-card";
+import { BULL_DATA_URI } from "@/lib/bull-asset";
 
 // 1500×500 X header banner PNG. Server-only; falls back to a static SVG on render failure.
 export const Route = createFileRoute("/api/banner")({
@@ -9,7 +10,7 @@ export const Route = createFileRoute("/api/banner")({
       GET: async ({ request }) => {
         const params = parseCardParams(new URL(request.url).searchParams);
         try {
-          return await ImageResponse.async(<BannerImage {...params} />, {
+          return await ImageResponse.async(<BannerImage {...params} bull={BULL_DATA_URI} />, {
             width: 1500,
             height: 500,
             format: "png",

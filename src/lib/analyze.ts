@@ -84,6 +84,54 @@ function buildResult(
   };
 }
 
+// Re-roast: regenerate ONLY the roast for a wallet that's already been analysed, bypassing the
+// 24h cache so the user can pull a fresh verdict on demand. Reuses stored on-chain stats (no
+// Helius call); goes straight to Groq (higher variety) with a template fallback. Persists the
+// new roast so the share card + a later revisit reflect it. Counts against the per-IP daily cap.
+export const reroast = createServerFn({ method: "POST" })
+  .validator((data: unknown) => {
+    const parsed = inputSchema.safeParse(data);
+    if (!parsed.success) throw new Error(ANALYZE_ERRORS.INVALID_ADDRESS);
+    return parsed.data;
+  })
+  .handler(async ({ data }): Promise<{ roast: string }> => {
+    const store = getStore();
+    const wallet = data.wallet;
+
+    const count = await store.bumpIpUsage(clientIp(), dayKey());
+    if (count > IP_DAILY_CAP) throw new Error(ANALYZE_ERRORS.RATE_LIMITED);
+
+    const existing = await store.getWallet(wallet);
+    let stats: WalletStats;
+    if (existing) {
+      try {
+        stats = JSON.parse(existing.data) as WalletStats;
+      } catch {
+        stats = await fetchWalletData(wallet);
+      }
+    } else {
+      stats = await fetchWalletData(wallet);
+    }
+
+    const result = calculateScore(stats);
+    const price = await loadAnsemPrice();
+    const roast = await generateRoast(stats, result, price.priceUsd);
+
+    await store.upsertWallet({
+      address: wallet,
+      grade: result.grade,
+      score: result.score,
+      identity: result.identity.name,
+      ansemBalance: stats.ansemBalance,
+      isOg: stats.isOgHolder,
+      roast,
+      data: JSON.stringify(stats),
+      analyzedAt: existing?.analyzedAt ?? Math.floor(Date.now() / 1000),
+    });
+
+    return { roast };
+  });
+
 export const analyze = createServerFn({ method: "POST" })
   .validator((data: unknown) => {
     // Clean brand-voice message instead of a raw ZodError; no provider call for a bad address.

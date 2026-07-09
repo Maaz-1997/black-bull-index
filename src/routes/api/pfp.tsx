@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ImageResponse } from "@cf-wasm/og";
 import { PfpImage, parseCardParams, buildFallbackSvg } from "@/lib/og-card";
+import { BULL_DATA_URI } from "@/lib/bull-asset";
 
 // 1000×1000 PFP (avatar) PNG. Server-only; falls back to a static SVG on render failure.
 export const Route = createFileRoute("/api/pfp")({
@@ -9,7 +10,7 @@ export const Route = createFileRoute("/api/pfp")({
       GET: async ({ request }) => {
         const params = parseCardParams(new URL(request.url).searchParams);
         try {
-          return await ImageResponse.async(<PfpImage {...params} />, {
+          return await ImageResponse.async(<PfpImage {...params} bull={BULL_DATA_URI} />, {
             width: 1000,
             height: 1000,
             format: "png",

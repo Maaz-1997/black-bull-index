@@ -1,22 +1,71 @@
 // Shareable card: a Satori-compatible JSX layout rendered to PNG by the /api/og route via
 // @cf-wasm/og. Client-safe — no @cf-wasm/og import here, so buildOgImageUrl / buildShareText /
-// buildOgImagePath can be used from the client without pulling wasm into the bundle.
+// buildImagePath can be used from the client without pulling wasm into the bundle.
+//
+// Design language (Phase 7): black + molten gold is CONSTANT. The Identity name and score always
+// render in gold. The grade colour is used ONLY as an ambient glow/ring accent — never as the
+// dominant text colour. Every card carries the black-gold bull emblem and the wallet's real
+// on-chain data as collectible badges (holdings, live $ANSEM price, OG / WIF / BONK, rank).
 import { SITE_URL } from "./constants";
 import type { AnalyzeResult } from "./analyze";
+
+// Molten-gold palette (constant across every card).
+const GOLD = "#f4d78a";
+const GOLD_DEEP = "#b98a2d";
+const INK = "#050505";
 
 export interface CardParams {
   name: string; // Identity name, e.g. "THE ARCHITECT"
   grade: string; // "S+"
   score: number; // 0–100
-  colour: string; // accent hex, e.g. "#F5A623"
+  colour: string; // grade accent hex — used for GLOW ONLY
   wallet: string; // short-hash, e.g. "8vkM…7Cs"
   roast: string; // excerpt
-  rank: string; // e.g. "#42 · Top 3%" (empty string if none)
+  rank: string; // e.g. "#42 · TOP 3%" (empty string if none)
   isOg: boolean;
+  ansem: string; // formatted $ANSEM holdings, e.g. "482K" or "0"
+  usd: string; // formatted USD value of holdings, e.g. "$41K" ("" if none)
+  price: string; // formatted live $ANSEM price, e.g. "$0.30" ("" if unknown)
+  wif: boolean; // holds WIF
+  bonk: boolean; // holds BONK
+  bull?: string; // bull emblem data URI — injected server-side by the image routes only
 }
 
-// Premium 1200×630 card. Satori rule: every div with children needs display:flex.
-export function CardImage({ name, grade, score, colour, wallet, roast, rank, isOg }: CardParams) {
+// A collectible data badge (pill).
+function Chip({ text, solid }: { text: string; solid?: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        fontSize: 21,
+        letterSpacing: 1,
+        color: solid ? INK : GOLD,
+        backgroundColor: solid ? GOLD : "rgba(244,215,138,0.08)",
+        border: `1px solid ${solid ? GOLD : "rgba(244,215,138,0.28)"}`,
+        borderRadius: 999,
+        padding: "6px 16px",
+        fontWeight: solid ? 700 : 400,
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function buildChips(p: CardParams) {
+  const chips: { text: string; solid?: boolean }[] = [];
+  chips.push({ text: `${p.ansem} $ANSEM${p.usd ? ` · ${p.usd}` : ""}` });
+  if (p.isOg) chips.push({ text: "OG · PRE-RUN", solid: true });
+  if (p.wif) chips.push({ text: "WIF" });
+  if (p.bonk) chips.push({ text: "BONK" });
+  return chips;
+}
+
+// Premium 1200×630 card — the ad that unfurls on X. Satori rule: every div with children needs
+// display:flex. The bull sits on the right behind a grade-tinted glow; text stays gold-forward.
+export function CardImage(p: CardParams) {
+  const { name, grade, score, colour, wallet, roast, rank, isOg, price, bull } = p;
   return (
     <div
       style={{
@@ -24,136 +73,194 @@ export function CardImage({ name, grade, score, colour, wallet, roast, rank, isO
         height: 630,
         display: "flex",
         flexDirection: "column",
-        backgroundColor: "#050505",
+        backgroundColor: INK,
         color: "#eaeaea",
       }}
     >
       <div
         style={{
-          height: 8,
+          height: 6,
           width: "100%",
-          backgroundImage: "linear-gradient(90deg,#b98a2d,#f4d78a,#b98a2d)",
+          backgroundImage: `linear-gradient(90deg, ${GOLD_DEEP}, ${GOLD}, ${GOLD_DEEP})`,
         }}
       />
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          flex: 1,
-          padding: 64,
-          justifyContent: "space-between",
-        }}
-      >
+      <div style={{ display: "flex", flex: 1 }}>
+        {/* Text column — gold-forward */}
         <div
           style={{
             display: "flex",
+            flexDirection: "column",
+            width: 730,
+            padding: "42px 52px",
             justifyContent: "space-between",
-            alignItems: "center",
-            fontSize: 22,
-            letterSpacing: 4,
-            color: "#9a9a9a",
           }}
         >
-          <div style={{ display: "flex" }}>BLACK BULL INDEX</div>
-          <div style={{ display: "flex" }}>LIVE · SOLANA</div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", fontSize: 24, letterSpacing: 6, color: colour }}>
-            {grade} · READING
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: 20,
+              letterSpacing: 3,
+              color: "#9a8f77",
+            }}
+          >
+            <div style={{ display: "flex" }}>BLACK BULL INDEX</div>
+            <div style={{ display: "flex", color: GOLD }}>
+              {price ? `$ANSEM ${price}` : "SEASON 01"}
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 20,
+                  letterSpacing: 5,
+                  color: colour,
+                  border: `1px solid ${colour}`,
+                  borderRadius: 999,
+                  padding: "4px 15px",
+                }}
+              >
+                {grade} · THE INDEX
+              </div>
+              {isOg ? (
+                <div
+                  style={{
+                    display: "flex",
+                    marginLeft: 12,
+                    fontSize: 20,
+                    letterSpacing: 3,
+                    color: INK,
+                    backgroundColor: GOLD,
+                    borderRadius: 999,
+                    padding: "5px 15px",
+                    fontWeight: 700,
+                  }}
+                >
+                  OG
+                </div>
+              ) : null}
+            </div>
+
             <div
               style={{
                 display: "flex",
-                fontSize: 84,
+                fontSize: 74,
                 fontWeight: 800,
                 letterSpacing: -2,
-                color: colour,
+                color: GOLD,
+                marginTop: 14,
+                lineHeight: 1,
               }}
             >
               {name}
             </div>
-            {isOg ? (
+
+            <div style={{ display: "flex", alignItems: "flex-end", marginTop: 8 }}>
               <div
                 style={{
                   display: "flex",
-                  marginLeft: 22,
-                  fontSize: 22,
-                  letterSpacing: 4,
-                  color: "#f4d78a",
-                  border: "2px solid #b98a2d",
-                  borderRadius: 999,
-                  padding: "6px 16px",
+                  fontSize: 116,
+                  fontWeight: 800,
+                  letterSpacing: -5,
+                  color: "#ffffff",
+                  lineHeight: 1,
                 }}
               >
-                OG
+                {String(score)}
               </div>
-            ) : null}
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 24,
+                  color: "#7a7a7a",
+                  marginLeft: 12,
+                  marginBottom: 16,
+                }}
+              >
+                / 100
+              </div>
+              {rank ? (
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: 22,
+                    letterSpacing: 2,
+                    color: GOLD,
+                    marginLeft: 22,
+                    marginBottom: 20,
+                  }}
+                >
+                  {rank}
+                </div>
+              ) : null}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              {buildChips(p).map((c, i) => (
+                <Chip key={i} text={c.text} solid={c.solid} />
+              ))}
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-end", marginTop: 12 }}>
-            <div
-              style={{
-                display: "flex",
-                fontSize: 150,
-                fontWeight: 800,
-                letterSpacing: -4,
-                color: colour,
-              }}
-            >
-              {String(score)}
-            </div>
-            <div
-              style={{
-                display: "flex",
-                fontSize: 26,
-                color: "#7a7a7a",
-                marginLeft: 16,
-                marginBottom: 26,
-              }}
-            >
-              / 100
-            </div>
-          </div>
-          {rank ? (
-            <div
-              style={{
-                display: "flex",
-                fontSize: 24,
-                letterSpacing: 4,
-                color: "#9a9a9a",
-                marginTop: 10,
-              }}
-            >
-              {rank}
-            </div>
-          ) : null}
+
           <div
-            style={{ display: "flex", width: 1040, fontSize: 28, color: "#d0d0d0", marginTop: 24 }}
+            style={{
+              display: "flex",
+              width: 620,
+              fontSize: 21,
+              lineHeight: 1.35,
+              color: "#c9c2b4",
+            }}
           >
             {roast}
           </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 18,
+              letterSpacing: 2,
+              color: "#8a8177",
+            }}
+          >
+            <div style={{ display: "flex" }}>{wallet}</div>
+            <div style={{ display: "flex" }}>blackbullindex.com · @blknoiz06</div>
+          </div>
         </div>
 
+        {/* Bull column — grade colour as glow only */}
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
-            fontSize: 20,
-            letterSpacing: 3,
-            color: "#8a8a8a",
+            width: 470,
+            position: "relative",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <div style={{ display: "flex" }}>{wallet}</div>
-          <div style={{ display: "flex" }}>blackbullindex.com · @blknoiz06</div>
+          <div
+            style={{
+              position: "absolute",
+              width: 470,
+              height: 630,
+              display: "flex",
+              backgroundImage: `radial-gradient(circle at 55% 46%, ${colour}40, transparent 62%)`,
+            }}
+          />
+          {bull ? <img src={bull} width={392} height={490} alt="" /> : null}
         </div>
       </div>
     </div>
   );
 }
 
-// 1000×1000 avatar — the grade as an iconic badge. Reads at small PFP size.
-export function PfpImage({ name, grade, score, colour, isOg }: CardParams) {
+// 1000×1000 avatar — bull-centric, the grade as a corner badge. Reads at small PFP size.
+export function PfpImage(p: CardParams) {
+  const { name, grade, score, colour, isOg, rank, bull } = p;
   return (
     <div
       style={{
@@ -162,8 +269,9 @@ export function PfpImage({ name, grade, score, colour, isOg }: CardParams) {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#050505",
+        justifyContent: "space-between",
+        backgroundColor: INK,
+        padding: 54,
         position: "relative",
       }}
     >
@@ -173,46 +281,73 @@ export function PfpImage({ name, grade, score, colour, isOg }: CardParams) {
           width: 1000,
           height: 1000,
           display: "flex",
-          backgroundImage: `radial-gradient(circle at 50% 42%, ${colour}33, transparent 60%)`,
+          backgroundImage: `radial-gradient(circle at 50% 44%, ${colour}44, transparent 60%)`,
         }}
       />
-      <div style={{ display: "flex", fontSize: 30, letterSpacing: 12, color: "#8a8a8a" }}>
-        BLACK BULL INDEX
-      </div>
       <div
         style={{
           display: "flex",
-          fontSize: 460,
-          fontWeight: 800,
-          letterSpacing: -12,
-          color: colour,
-          lineHeight: 1,
+          width: "100%",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontSize: 26,
+          letterSpacing: 6,
+          color: "#9a8f77",
         }}
       >
-        {grade}
+        <div style={{ display: "flex" }}>BLACK BULL INDEX</div>
+        <div
+          style={{
+            display: "flex",
+            fontSize: 26,
+            letterSpacing: 4,
+            color: colour,
+            border: `1px solid ${colour}`,
+            borderRadius: 999,
+            padding: "6px 18px",
+          }}
+        >
+          {grade}
+          {isOg ? " · OG" : ""}
+        </div>
       </div>
-      <div
-        style={{
-          display: "flex",
-          fontSize: 64,
-          fontWeight: 800,
-          letterSpacing: -2,
-          color: "#eaeaea",
-        }}
-      >
-        {name}
-      </div>
-      <div
-        style={{ display: "flex", fontSize: 30, letterSpacing: 6, color: "#8a8a8a", marginTop: 20 }}
-      >
-        {score}/100{isOg ? " · OG" : ""}
+
+      {bull ? <img src={bull} width={432} height={540} alt="" /> : null}
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            fontSize: 68,
+            fontWeight: 800,
+            letterSpacing: -2,
+            color: GOLD,
+            lineHeight: 1,
+          }}
+        >
+          {name}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            fontSize: 30,
+            letterSpacing: 4,
+            color: "#8a8177",
+            marginTop: 16,
+          }}
+        >
+          <div style={{ display: "flex", color: "#ffffff", fontWeight: 700 }}>{score}/100</div>
+          {rank ? <div style={{ display: "flex", marginLeft: 14, color: GOLD }}>{rank}</div> : null}
+        </div>
       </div>
     </div>
   );
 }
 
-// 1500×500 X header banner.
-export function BannerImage({ name, grade, score, colour, roast, rank, isOg }: CardParams) {
+// 1500×500 X header banner — bull on the right, gold-forward text on the left.
+export function BannerImage(p: CardParams) {
+  const { name, grade, score, colour, roast, rank, isOg, price, bull } = p;
   return (
     <div
       style={{
@@ -220,75 +355,105 @@ export function BannerImage({ name, grade, score, colour, roast, rank, isOg }: C
         height: 500,
         display: "flex",
         alignItems: "center",
-        backgroundColor: "#050505",
-        padding: 80,
+        backgroundColor: INK,
+        padding: "0 72px",
         position: "relative",
       }}
     >
       <div
         style={{
           position: "absolute",
-          width: 1500,
+          right: 0,
+          top: 0,
+          width: 760,
           height: 500,
           display: "flex",
-          backgroundImage: `radial-gradient(60% 120% at 20% 50%, ${colour}22, transparent 60%)`,
+          backgroundImage: `radial-gradient(60% 120% at 72% 50%, ${colour}3a, transparent 62%)`,
         }}
       />
       <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-        <div style={{ display: "flex", fontSize: 22, letterSpacing: 6, color: colour }}>
-          {grade} · READING{isOg ? " · OG" : ""}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            fontSize: 20,
+            letterSpacing: 4,
+            color: "#9a8f77",
+          }}
+        >
+          <div style={{ display: "flex", color: GOLD }}>BLACK BULL INDEX</div>
+          <div style={{ display: "flex", marginLeft: 16 }}>
+            {price ? `$ANSEM ${price}` : "SEASON 01"}
+          </div>
         </div>
         <div
           style={{
             display: "flex",
-            fontSize: 104,
+            fontSize: 92,
             fontWeight: 800,
             letterSpacing: -3,
-            color: colour,
-            marginTop: 6,
+            color: GOLD,
+            marginTop: 8,
+            lineHeight: 1,
           }}
         >
           {name}
         </div>
-        <div style={{ display: "flex", width: 900, fontSize: 26, color: "#b8b8b8", marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", marginTop: 10 }}>
+          <div style={{ display: "flex", fontSize: 30, letterSpacing: 4, color: colour }}>
+            {grade}
+            {isOg ? " · OG" : ""}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              fontSize: 30,
+              color: "#ffffff",
+              fontWeight: 700,
+              marginLeft: 18,
+            }}
+          >
+            {score}/100
+          </div>
+          {rank ? (
+            <div style={{ display: "flex", fontSize: 24, color: GOLD, marginLeft: 18 }}>{rank}</div>
+          ) : null}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            width: 820,
+            fontSize: 22,
+            color: "#b8b1a3",
+            marginTop: 14,
+            lineHeight: 1.3,
+          }}
+        >
           {roast}
         </div>
         <div
           style={{
             display: "flex",
-            fontSize: 20,
-            letterSpacing: 3,
-            color: "#8a8a8a",
-            marginTop: 20,
+            fontSize: 18,
+            letterSpacing: 2,
+            color: "#8a8177",
+            marginTop: 14,
           }}
         >
           blackbullindex.com · @blknoiz06
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-        <div
-          style={{
-            display: "flex",
-            fontSize: 220,
-            fontWeight: 800,
-            letterSpacing: -8,
-            color: colour,
-            lineHeight: 1,
-          }}
-        >
-          {String(score)}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            fontSize: 22,
-            letterSpacing: 3,
-            color: "#8a8a8a",
-            marginTop: 8,
-          }}
-        >
-          / 100{rank ? ` · ${rank}` : ""}
-        </div>
+      <div
+        style={{
+          display: "flex",
+          width: 380,
+          height: 500,
+          position: "relative",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {bull ? <img src={bull} width={328} height={410} alt="" /> : null}
       </div>
     </div>
   );
@@ -313,20 +478,42 @@ export function parseCardParams(q: URLSearchParams): CardParams {
     roast: (q.get("roast") ?? "Every wallet is a memoir written in transactions.").slice(0, 180),
     rank: q.get("rank") ?? "",
     isOg: q.get("og") === "1",
+    ansem: q.get("ansem") ?? "0",
+    usd: q.get("usd") ?? "",
+    price: q.get("price") ?? "",
+    wif: q.get("wif") === "1",
+    bonk: q.get("bonk") === "1",
   };
 }
 
 export function buildFallbackSvg(p: CardParams): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630"><rect width="1200" height="630" fill="#050505"/><rect width="1200" height="8" fill="#d8b15a"/><text x="80" y="330" font-family="sans-serif" font-size="80" font-weight="700" fill="${p.colour}">${escapeXml(p.name)}</text><text x="80" y="420" font-family="sans-serif" font-size="38" fill="#8a8a8a">${escapeXml(p.grade)} · ${p.score}/100 · blackbullindex.com</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630"><rect width="1200" height="630" fill="${INK}"/><rect width="1200" height="6" fill="${GOLD}"/><text x="72" y="320" font-family="sans-serif" font-size="76" font-weight="700" fill="${GOLD}">${escapeXml(p.name)}</text><text x="72" y="405" font-family="sans-serif" font-size="36" fill="#9a8f77">${escapeXml(p.grade)} · ${p.score}/100 · blackbullindex.com</text></svg>`;
 }
 
 const shortWallet = (w: string) => (w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : w);
 
+// Compact number formatting for badges: 482000 → "482K", 1500000 → "1.5M".
+function compact(n: number): string {
+  if (n >= 1_000_000)
+    return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}K`;
+  return String(Math.round(n));
+}
+
+// Live $ANSEM price for the ticker chip: sub-cent tokens keep significant digits.
+function fmtUsd(v: number): string {
+  if (v >= 1) return `$${v.toFixed(2)}`;
+  if (v >= 0.01) return `$${v.toFixed(3)}`;
+  return `$${v.toPrecision(2)}`;
+}
+
 function rankLabel(r: AnalyzeResult): string {
-  return `#${r.rank}${r.percentile ? ` · Top ${r.percentile}%` : ""}`;
+  return `#${r.rank}${r.percentile ? ` · TOP ${r.percentile}%` : ""}`;
 }
 
 function ogParams(r: AnalyzeResult): string {
+  const holdings = r.stats.ansemBalance;
+  const usd = holdings > 0 && r.ansemPrice > 0 ? `$${compact(holdings * r.ansemPrice)}` : "";
   return new URLSearchParams({
     name: r.identity.name,
     grade: r.grade,
@@ -336,6 +523,11 @@ function ogParams(r: AnalyzeResult): string {
     roast: r.roast.slice(0, 180),
     rank: rankLabel(r),
     og: r.stats.isOgHolder ? "1" : "0",
+    ansem: compact(holdings),
+    usd,
+    price: r.ansemPrice > 0 ? fmtUsd(r.ansemPrice) : "",
+    wif: r.stats.wifBalance > 0 ? "1" : "0",
+    bonk: r.stats.bonkBalance > 0 ? "1" : "0",
   }).toString();
 }
 

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { ArrowUpRight, RotateCcw, Download, Trophy } from "lucide-react";
-import { analyze, type AnalyzeResult } from "@/lib/analyze";
+import { ArrowUpRight, RotateCcw, Download, Trophy, Sparkles } from "lucide-react";
+import { analyze, reroast, type AnalyzeResult } from "@/lib/analyze";
 import { BREAKDOWN_LABELS } from "@/lib/constants";
 import { buildOgImageUrl, buildOgImagePath, buildImagePath, buildShareText } from "@/lib/og-card";
 import {
@@ -11,6 +11,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
+import bull from "@/assets/black-bull.png";
 
 export const Route = createFileRoute("/result/$wallet")({
   // Load server-side so the reveal AND the share meta / OG card are per-result and crawler-correct.
@@ -48,7 +49,49 @@ function ResultPage() {
 }
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const GOLD_TEXT = "linear-gradient(180deg,#fbe7bd 0%,#f4d78a 45%,#b98a2d 100%)";
 const short = (w: string) => (w.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)}` : w);
+
+function compact(n: number): string {
+  if (n >= 1_000_000)
+    return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1).replace(/\.0$/, "")}K`;
+  return String(Math.round(n));
+}
+
+function fmtPrice(v: number): string {
+  if (v >= 1) return `$${v.toFixed(2)}`;
+  if (v >= 0.01) return `$${v.toFixed(3)}`;
+  return `$${v.toPrecision(2)}`;
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+// Score count-up — the number climbs from 0 to the final value once on mount.
+function useCountUp(target: number, ms = 1400): number {
+  const [v, setV] = useState(prefersReducedMotion() ? target : 0);
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setV(target);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / ms);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setV(Math.round(eased * target));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return v;
+}
 
 /* ---- states ---- */
 
@@ -88,14 +131,51 @@ function Fault({ message }: { message?: string }) {
   );
 }
 
+/* ---- badges ---- */
+
+function Chip({ children, solid }: { children: React.ReactNode; solid?: boolean }) {
+  return (
+    <span
+      className={
+        solid
+          ? "inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full text-[12px] font-medium tracking-wide bg-gradient-to-b from-[#f4d78a] to-[#c8a34a] text-[#1a0f00]"
+          : "inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full text-[12px] tracking-wide border border-[#d8b15a]/30 bg-[#d8b15a]/[0.06] text-[#e7c877]"
+      }
+    >
+      {children}
+    </span>
+  );
+}
+
+function DataChips({ data }: { data: AnalyzeResult }) {
+  const s = data.stats;
+  const years = (s.walletAgeDays / 365).toFixed(1);
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Chip>{compact(s.ansemBalance)} $ANSEM</Chip>
+      {data.ansemPrice > 0 && <Chip>$ANSEM {fmtPrice(data.ansemPrice)}</Chip>}
+      {s.isOgHolder && <Chip solid>OG · PRE-RUN</Chip>}
+      {s.receivedAirdrop && s.ansemBalance > 0 && <Chip>STIMMY HELD</Chip>}
+      {s.wifBalance > 0 && <Chip>WIF</Chip>}
+      {s.bonkBalance > 0 && <Chip>BONK</Chip>}
+      {s.solBalance > 0 && <Chip>{s.solBalance.toFixed(2)} SOL</Chip>}
+      {s.walletAgeDays > 365 && <Chip>{years}Y ON-CHAIN</Chip>}
+    </div>
+  );
+}
+
 /* ---- the reveal ---- */
 
 function Reveal({ data }: { data: AnalyzeResult }) {
-  const c = data.identity.colour;
+  const c = data.identity.colour; // grade accent — glow / rings ONLY
+  const [roast, setRoast] = useState(data.roast);
+  const current = { ...data, roast }; // share card + downloads reflect the live roast
+  const score = useCountUp(data.score);
+
   const beat = (i: number) => ({
     initial: { opacity: 0, y: 30, filter: "blur(12px)" },
     animate: { opacity: 1, y: 0, filter: "blur(0px)" },
-    transition: { duration: 0.9, delay: 0.2 + i * 0.35, ease: EASE },
+    transition: { duration: 0.9, delay: 0.2 + i * 0.3, ease: EASE },
   });
 
   const entries = Object.entries(data.breakdown);
@@ -103,27 +183,52 @@ function Reveal({ data }: { data: AnalyzeResult }) {
 
   return (
     <main className="relative min-h-screen w-full bg-background overflow-x-clip">
+      {/* Ambient: constant gold wash + a faint grade-tinted glow (accent only) */}
       <div
-        className="pointer-events-none fixed inset-0 opacity-40"
-        style={{ background: `radial-gradient(60% 50% at 50% 22%, ${c}22, transparent 70%)` }}
+        className="pointer-events-none fixed inset-0"
+        style={{
+          background: `radial-gradient(70% 55% at 50% 12%, rgba(216,177,90,0.10), transparent 70%), radial-gradient(45% 40% at 78% 30%, ${c}22, transparent 70%)`,
+        }}
       />
+
+      {/* Bull emblem — the myth, present on the reveal. Grade glow sits behind it. */}
+      <div className="pointer-events-none absolute right-[-8%] top-[6%] hidden lg:flex">
+        <div
+          className="absolute inset-0 blur-3xl"
+          style={{ background: `radial-gradient(circle at 50% 42%, ${c}33, transparent 62%)` }}
+        />
+        <img
+          src={bull}
+          alt=""
+          className="relative h-[86vh] w-auto object-contain opacity-[0.55] drop-shadow-[0_60px_120px_rgba(0,0,0,0.9)]"
+          style={{
+            maskImage: "linear-gradient(90deg, transparent 0%, black 42%)",
+            WebkitMaskImage: "linear-gradient(90deg, transparent 0%, black 42%)",
+          }}
+        />
+      </div>
 
       <div className="relative z-10 mx-auto max-w-[1100px] px-6 md:px-10 py-24 md:py-32">
         <motion.div
           {...beat(0)}
           className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.3em] text-muted-foreground"
         >
-          <span>The Black Bull Index · Reading</span>
+          <span className="text-[#d8b15a]">The Black Bull Index · Season 01</span>
           <span>{short(data.wallet)}</span>
         </motion.div>
 
-        <motion.div {...beat(1)} className="mt-10">
+        <motion.div {...beat(1)} className="mt-10 max-w-2xl">
           <div className="font-mono text-[11px] uppercase tracking-[0.4em]" style={{ color: c }}>
             {data.grade} · {data.identity.scoreRange}
           </div>
           <h1
             className="mt-5 font-display text-[15vw] md:text-[9vw] leading-[0.85] tracking-[-0.05em]"
-            style={{ color: c }}
+            style={{
+              backgroundImage: GOLD_TEXT,
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+            }}
           >
             {data.identity.name}
           </h1>
@@ -132,25 +237,31 @@ function Reveal({ data }: { data: AnalyzeResult }) {
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
             <span>
-              Rank <span style={{ color: c }}>#{data.rank}</span> of {data.total}
+              Rank <span className="text-[#e7c877]">#{data.rank}</span> of {data.total}
             </span>
-            {data.percentile != null && <span>· Top {data.percentile}%</span>}
-            {data.stats.isOgHolder && <span className="text-gold">· OG · held before the run</span>}
+            {data.percentile != null && (
+              <span className="text-[#e7c877]">· Top {data.percentile}%</span>
+            )}
           </div>
         </motion.div>
 
-        <motion.div {...beat(2)} className="mt-16 flex items-end gap-6">
+        {/* Real on-chain data as collectible badges */}
+        <motion.div {...beat(2)} className="mt-8">
+          <DataChips data={data} />
+        </motion.div>
+
+        <motion.div {...beat(3)} className="mt-14 flex items-end gap-6">
           <div
             className="font-display leading-[0.8] tracking-[-0.05em]"
             style={{
               fontSize: "clamp(90px, 20vw, 220px)",
-              background: `linear-gradient(180deg, #ffffff 0%, ${c} 62%, #050505 112%)`,
+              backgroundImage: "linear-gradient(180deg,#ffffff 0%,#f4d78a 60%,#b98a2d 112%)",
               WebkitBackgroundClip: "text",
               backgroundClip: "text",
               color: "transparent",
             }}
           >
-            {data.score}
+            {score}
           </div>
           <div className="mb-4 font-mono text-[12px] uppercase tracking-[0.28em] text-muted-foreground">
             / 100
@@ -158,21 +269,23 @@ function Reveal({ data }: { data: AnalyzeResult }) {
         </motion.div>
 
         <motion.blockquote
-          {...beat(3)}
-          className="mt-14 max-w-2xl border-l-2 pl-6 text-[18px] md:text-[20px] leading-relaxed text-white/80 italic font-light"
-          style={{ borderColor: c }}
+          {...beat(4)}
+          className="mt-12 max-w-2xl border-l-2 border-[#d8b15a] pl-6 text-[18px] md:text-[20px] leading-relaxed text-white/85 italic font-light"
         >
-          {data.roast}
+          {roast}
+          <div className="mt-5 not-italic">
+            <ReRoastButton wallet={data.wallet} onRoast={setRoast} />
+          </div>
         </motion.blockquote>
 
         <motion.p
-          {...beat(4)}
+          {...beat(5)}
           className="mt-10 max-w-2xl text-[15px] leading-relaxed text-white/50"
         >
           {data.identity.description}
         </motion.p>
 
-        <motion.div {...beat(5)} className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-10">
+        <motion.div {...beat(6)} className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-10">
           <div className="glass-card rounded-[24px] p-8">
             <div className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
               Score breakdown
@@ -190,7 +303,10 @@ function Reveal({ data }: { data: AnalyzeResult }) {
                         className="flex items-center justify-between text-[13px] text-white/70"
                       >
                         <span>{BREAKDOWN_LABELS[key] ?? key}</span>
-                        <span className="font-mono" style={{ color: pts < 0 ? "#D0021B" : c }}>
+                        <span
+                          className="font-mono"
+                          style={{ color: pts < 0 ? "#D0021B" : "#e7c877" }}
+                        >
                           {pts > 0 ? `+${pts}` : pts}
                         </span>
                       </li>
@@ -219,17 +335,17 @@ function Reveal({ data }: { data: AnalyzeResult }) {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <ShareButton data={data} />
-              <DownloadButton data={data} />
+              <ShareButton data={current} />
+              <DownloadButton data={current} />
               <a
-                href={buildImagePath(data, "pfp")}
+                href={buildImagePath(current, "pfp")}
                 download={`black-bull-pfp-${data.grade}.png`}
                 className="inline-flex items-center gap-2 h-11 px-5 rounded-full border border-white/[0.1] text-[13px] text-white/80 hover:bg-white/[0.05] transition"
               >
                 <Download className="h-4 w-4" /> PFP
               </a>
               <a
-                href={buildImagePath(data, "banner")}
+                href={buildImagePath(current, "banner")}
                 download={`black-bull-banner-${data.grade}.png`}
                 className="inline-flex items-center gap-2 h-11 px-5 rounded-full border border-white/[0.1] text-[13px] text-white/80 hover:bg-white/[0.05] transition"
               >
@@ -252,6 +368,32 @@ function Reveal({ data }: { data: AnalyzeResult }) {
         </motion.div>
       </div>
     </main>
+  );
+}
+
+// Re-roast: pull a fresh verdict on the same wallet. Bypasses the 24h cache (server-side) so the
+// roast reads differently each time — a reason to come back and re-share.
+function ReRoastButton({ wallet, onRoast }: { wallet: string; onRoast: (roast: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const onClick = async () => {
+    setBusy(true);
+    try {
+      const { roast } = await reroast({ data: { wallet } });
+      onRoast(roast);
+    } catch (err) {
+      console.error("re-roast failed", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className="inline-flex items-center gap-2 h-9 px-4 rounded-full border border-[#d8b15a]/30 bg-[#d8b15a]/[0.06] text-[12px] uppercase tracking-[0.2em] text-[#e7c877] transition hover:bg-[#d8b15a]/[0.12] disabled:opacity-50"
+    >
+      <Sparkles className="h-3.5 w-3.5" /> {busy ? "Reading again…" : "Re-roast"}
+    </button>
   );
 }
 
