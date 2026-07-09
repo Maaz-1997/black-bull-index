@@ -107,14 +107,24 @@ export async function generateRoast(
   // to the next key. If every key fails, use a template so a roast ALWAYS resolves.
   for (const apiKey of keys) {
     try {
-      const res = await fetch(GROQ_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body,
-      });
+      // Bound each attempt so a slow LLM response can't stall the whole analysis. On timeout we
+      // abort and fall through to the next key, then the template.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 9000);
+      let res: Response;
+      try {
+        res = await fetch(GROQ_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!res.ok) continue;
 
       const data = (await res.json()) as GroqChatResponse;

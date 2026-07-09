@@ -47,6 +47,8 @@ export function calculateScore(stats: WalletStats): ScoreResult {
   if (stats.ansemBalance > 10_000) add("ansemOver10k", SCORE_WEIGHTS.ansemOver10k);
   if (stats.ansemBalance > 100_000) add("ansemOver100k", SCORE_WEIGHTS.ansemOver100k);
   if (stats.ansemBalance > 1_000_000) add("ansemOver1m", SCORE_WEIGHTS.ansemOver1m);
+  if (stats.ansemBalance > 10_000_000) add("ansemOver10m", SCORE_WEIGHTS.ansemOver10m);
+  if (stats.ansemBalance > 100_000_000) add("ansemOver100m", SCORE_WEIGHTS.ansemOver100m);
 
   // Solana ecosystem presence
   if (stats.solBalance > 1) add("solBalance", SCORE_WEIGHTS.solBalance);

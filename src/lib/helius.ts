@@ -107,18 +107,20 @@ async function fetchSolBalance(keys: string[], owner: string): Promise<number | 
 export async function fetchWalletData(wallet: string): Promise<WalletStats> {
   const keys = heliusKeys();
 
-  const [ansem, wif, bonk, sol] = await Promise.all([
+  // Everything runs concurrently — balances, wallet age, and the enhanced-tx history check — so
+  // total latency is roughly the slowest single request, not the sum. (Previously sequential,
+  // which pushed cold analyses to 30–45s.)
+  const [ansem, wif, bonk, sol, history] = await Promise.all([
     fetchTokenBalance(keys, wallet, ANSEM_MINT),
     fetchTokenBalance(keys, wallet, WIF_MINT),
     fetchTokenBalance(keys, wallet, BONK_MINT),
     fetchSolBalance(keys, wallet),
+    checkHistory(wallet, keys),
   ]);
 
   // The ANSEM balance is the core signal — if every key failed to return it, surface an error
   // (analyze.ts maps this to PROVIDER_DOWN) rather than silently scoring a holder as 0.
   if (ansem === null) throw new Error("Helius: all keys failed for ANSEM balance");
-
-  const history = await checkHistory(wallet, keys);
 
   return {
     walletAddress: wallet,
@@ -151,39 +153,21 @@ async function checkHistory(
   let walletAgeKnown = true;
 
   try {
-    const age = await fetchWalletAge(keys, wallet);
+    // Age and the enhanced-tx history check are independent — run them together.
+    const [age, txData] = await Promise.all([
+      fetchWalletAge(keys, wallet),
+      fetchEnhancedTxs(keys, wallet),
+    ]);
     walletAgeDays = age.days;
     walletAgeKnown = age.known;
 
-    // Enhanced transactions via Helius for OG + airdrop check. Falls back across keys.
-    let txData: HeliusEnhancedTx[] = [];
-    for (const key of keys) {
-      try {
-        const txRes = await fetch(
-          `https://api.helius.xyz/v0/addresses/${wallet}/transactions` +
-            `?api-key=${key}&type=TOKEN_TRANSFER&limit=25`,
-        );
-        if (!txRes.ok) continue;
-        txData = (await txRes.json()) as HeliusEnhancedTx[];
-        break;
-      } catch {
-        // Try the next key.
-      }
-    }
-
-    for (const tx of txData ?? []) {
+    for (const tx of txData) {
       for (const t of tx.tokenTransfers ?? []) {
         if (t.mint !== ANSEM_MINT || t.toUserAccount !== wallet) continue;
-
         // OG check — received ANSEM before the pump cutoff.
-        if (tx.timestamp && new Date(tx.timestamp * 1000) < OG_CUTOFF_DATE) {
-          isOgHolder = true;
-        }
-
+        if (tx.timestamp && new Date(tx.timestamp * 1000) < OG_CUTOFF_DATE) isOgHolder = true;
         // Airdrop check — came directly from Ansem's distribution wallet.
-        if (t.fromUserAccount === ANSEM_WALLET) {
-          receivedAirdrop = true;
-        }
+        if (t.fromUserAccount === ANSEM_WALLET) receivedAirdrop = true;
       }
     }
   } catch {
@@ -193,44 +177,47 @@ async function checkHistory(
   return { isOgHolder, receivedAirdrop, walletAgeDays, walletAgeKnown };
 }
 
-// Wallet age from the FIRST on-chain signature. getSignaturesForAddress returns newest-first, so we
-// walk backwards with the `before` cursor up to MAX_PAGES to reach genesis. If we exhaust the
-// history we return the exact age; if the wallet is too active to reach its first tx within the
-// budget, age is indeterminate (known:false) — the caller treats it as an established veteran and
-// never claims a specific "N days". A wallet with no signatures is genuinely new (known:true, 0).
+// Recent ANSEM token transfers for the OG + airdrop check. Falls back across keys.
+async function fetchEnhancedTxs(keys: string[], wallet: string): Promise<HeliusEnhancedTx[]> {
+  for (const key of keys) {
+    try {
+      const res = await fetch(
+        `https://api.helius.xyz/v0/addresses/${wallet}/transactions` +
+          `?api-key=${key}&type=TOKEN_TRANSFER&limit=25`,
+      );
+      if (!res.ok) continue;
+      return (await res.json()) as HeliusEnhancedTx[];
+    } catch {
+      // Try the next key.
+    }
+  }
+  return [];
+}
+
+// Wallet age from a single getSignaturesForAddress call (newest-first, max 1000).
+//   - fewer than 1000 signatures → that's the whole history; the oldest is the first tx → exact age
+//   - a full page (1000) → the wallet has 1000+ txs → "established" veteran, exact age indeterminate
+//     (we never claim a specific "N days" and treat it as long-lived for scoring)
+//   - no signatures → genuinely new/empty wallet (age 0, known)
+//   - fetch failed → treat as established rather than risk claiming "0 days"
+// One call keeps cold analyses fast; deep pagination to genesis isn't worth 4+ extra round-trips.
 async function fetchWalletAge(
   keys: string[],
   wallet: string,
 ): Promise<{ days: number; known: boolean }> {
-  const MAX_PAGES = 5; // up to ~5000 signatures — exact for the vast majority of real wallets
-  let before: string | undefined;
-  let oldestBlockTime: number | undefined;
-  let reachedGenesis = false;
-
-  for (let p = 0; p < MAX_PAGES; p++) {
-    const opts: Record<string, unknown> = { limit: 1000 };
-    if (before) opts.before = before;
-    const data = await heliusRpc<SignaturesResponse>(keys, {
-      jsonrpc: "2.0",
-      id: "bbi-wallet-age",
-      method: "getSignaturesForAddress",
-      params: [wallet, opts],
-    });
-    const page = data?.result ?? [];
-    if (page.length === 0) {
-      reachedGenesis = true;
-      break;
-    }
-    const last = page[page.length - 1];
-    if (last?.blockTime) oldestBlockTime = last.blockTime;
-    before = last?.signature;
-    if (page.length < 1000) {
-      reachedGenesis = true;
-      break;
-    }
+  const data = await heliusRpc<SignaturesResponse>(keys, {
+    jsonrpc: "2.0",
+    id: "bbi-wallet-age",
+    method: "getSignaturesForAddress",
+    params: [wallet, { limit: 1000 }],
+  });
+  if (!data) return { days: 0, known: false };
+  const page = data.result ?? [];
+  if (page.length === 0) return { days: 0, known: true };
+  if (page.length >= 1000) return { days: 0, known: false };
+  const oldest = page[page.length - 1];
+  if (oldest?.blockTime) {
+    return { days: Math.floor((Date.now() / 1000 - oldest.blockTime) / 86400), known: true };
   }
-
-  if (oldestBlockTime === undefined) return { days: 0, known: true }; // no transactions → new
-  if (!reachedGenesis) return { days: 0, known: false }; // established, exact age indeterminate
-  return { days: Math.floor((Date.now() / 1000 - oldestBlockTime) / 86400), known: true };
+  return { days: 0, known: false };
 }

@@ -158,3 +158,20 @@ test("established wallet (age indeterminate) earns both longevity bonuses", () =
   expect(fresh.breakdown.walletAge1year).toBeUndefined();
   expect(fresh.score).toBe(15);
 });
+
+test("mega-holder (100M+ ANSEM) reaches S+ / THE ARCHITECT on size alone", () => {
+  // The single biggest holder should read as elite even without detected OG/airdrop signals.
+  const r = calculateScore(
+    wallet({
+      ansemBalance: 584_000_000, // any+10k+100k+1m+10m+100m = 70
+      solBalance: 10000, // 5
+      bonkBalance: 100, // 5
+      walletAgeKnown: false, // established → 1yr + 2yr = 10
+    }),
+  );
+  expect(r.breakdown.ansemOver10m).toBe(10);
+  expect(r.breakdown.ansemOver100m).toBe(15);
+  expect(r.score).toBe(90);
+  expect(r.grade).toBe("S+");
+  expect(r.identity.name).toBe("THE ARCHITECT");
+});

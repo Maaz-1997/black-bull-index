@@ -15,12 +15,16 @@ export const ANSEM_WALLET = "8vkMzpNPLM4Bvb7J3eTT1BVBcwpkJHhVDdJEPNqk7Cs";
 // OG cutoff — before the 20,000% run
 export const OG_CUTOFF_DATE = new Date("2026-06-25T00:00:00Z");
 
-// Scoring weights (max possible score = 100, min = 0 after clamping)
+// Scoring weights. Cumulative ANSEM tiers stack; the final score is clamped to 0–100, so the
+// heaviest holders (10M / 100M+) can reach the top on conviction-by-size alone — the single
+// biggest holder should read as an Architect, not a Convert.
 export const SCORE_WEIGHTS = {
   ansemAny: 10, // holds any ANSEM at all
   ansemOver10k: 10, // holds > 10,000 ANSEM
   ansemOver100k: 15, // holds > 100,000 ANSEM
   ansemOver1m: 10, // holds > 1,000,000 ANSEM
+  ansemOver10m: 10, // holds > 10,000,000 ANSEM (whale)
+  ansemOver100m: 15, // holds > 100,000,000 ANSEM (titan)
   solBalance: 5, // SOL balance > 1 (real Solana wallet)
   wifHolder: 5, // holds any WIF
   bonkHolder: 5, // holds any BONK
@@ -137,6 +141,8 @@ export const BREAKDOWN_LABELS: Record<string, string> = {
   ansemOver10k: "$ANSEM over 10,000",
   ansemOver100k: "$ANSEM over 100,000",
   ansemOver1m: "$ANSEM over 1,000,000",
+  ansemOver10m: "$ANSEM over 10,000,000",
+  ansemOver100m: "$ANSEM over 100,000,000",
   solBalance: "Active Solana wallet",
   wifHolder: "Holds WIF",
   bonkHolder: "Holds BONK",
