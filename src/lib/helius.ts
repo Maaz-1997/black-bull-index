@@ -2,6 +2,7 @@
 // TanStack Start server function (edge/worker-safe: fetch + Web APIs only).
 // Import this ONLY from server functions — it reads HELIUS_API_KEY.
 import { ANSEM_MINT, WIF_MINT, BONK_MINT, OG_CUTOFF_DATE, ANSEM_WALLET } from "./constants";
+import { serverEnvKeys } from "./env";
 import type { WalletStats } from "./score";
 
 // --- Minimal typed shapes for the provider responses we consume ---
@@ -49,10 +50,10 @@ export interface WalletBalances {
   bonkBalance: number;
 }
 
-function heliusRpcUrl(): string {
-  const key = process.env.HELIUS_API_KEY;
-  if (!key) throw new Error("HELIUS_API_KEY is not set");
-  return `https://mainnet.helius-rpc.com/?api-key=${key}`;
+function heliusKeys(): string[] {
+  const keys = serverEnvKeys("HELIUS_API_KEY");
+  if (keys.length === 0) throw new Error("HELIUS_API_KEY is not set");
+  return keys;
 }
 
 // Pure: turn a getAssetsByOwner response into human-readable balances. No I/O — unit-tested.
@@ -77,32 +78,46 @@ export function parseWalletAssets(data: HeliusAssetsResponse): WalletBalances {
 }
 
 export async function fetchWalletData(wallet: string): Promise<WalletStats> {
-  const res = await fetch(heliusRpcUrl(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "black-bull-index",
-      method: "getAssetsByOwner",
-      params: {
-        ownerAddress: wallet,
-        page: 1,
-        limit: 100,
-        displayOptions: {
-          showFungible: true,
-          showNativeBalance: true,
-          showZeroBalance: false,
-        },
-      },
-    }),
-  });
+  const keys = heliusKeys();
 
-  if (!res.ok) throw new Error(`Helius error: ${res.status}`);
+  // Try each key in order; a rate-limited or failing key falls through to the next.
+  let lastError: unknown;
+  let data: HeliusAssetsResponse | null = null;
+  for (const key of keys) {
+    try {
+      const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "black-bull-index",
+          method: "getAssetsByOwner",
+          params: {
+            ownerAddress: wallet,
+            page: 1,
+            limit: 100,
+            displayOptions: {
+              showFungible: true,
+              showNativeBalance: true,
+              showZeroBalance: false,
+            },
+          },
+        }),
+      });
+      if (!res.ok) {
+        lastError = new Error(`Helius error: ${res.status}`);
+        continue;
+      }
+      data = (await res.json()) as HeliusAssetsResponse;
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (!data) throw lastError ?? new Error("Helius: all keys failed");
 
-  const data = (await res.json()) as HeliusAssetsResponse;
   const balances = parseWalletAssets(data);
-
-  const history = await checkHistory(wallet);
+  const history = await checkHistory(wallet, keys);
 
   return {
     walletAddress: wallet,
@@ -122,6 +137,7 @@ export async function fetchWalletData(wallet: string): Promise<WalletStats> {
 //    newest-first). Exact for wallets with <=1000 signatures; a conservative floor otherwise.
 async function checkHistory(
   wallet: string,
+  keys: string[],
 ): Promise<Pick<WalletStats, "isOgHolder" | "receivedAirdrop" | "walletAgeDays">> {
   let isOgHolder = false;
   let receivedAirdrop = false;
@@ -146,12 +162,21 @@ async function checkHistory(
       walletAgeDays = Math.floor((Date.now() / 1000 - oldest.blockTime) / 86400);
     }
 
-    // Enhanced transactions via Helius for OG + airdrop check.
-    const txRes = await fetch(
-      `https://api.helius.xyz/v0/addresses/${wallet}/transactions` +
-        `?api-key=${process.env.HELIUS_API_KEY}&type=TOKEN_TRANSFER&limit=25`,
-    );
-    const txData = (await txRes.json()) as HeliusEnhancedTx[];
+    // Enhanced transactions via Helius for OG + airdrop check. Falls back across keys.
+    let txData: HeliusEnhancedTx[] = [];
+    for (const key of keys) {
+      try {
+        const txRes = await fetch(
+          `https://api.helius.xyz/v0/addresses/${wallet}/transactions` +
+            `?api-key=${key}&type=TOKEN_TRANSFER&limit=25`,
+        );
+        if (!txRes.ok) continue;
+        txData = (await txRes.json()) as HeliusEnhancedTx[];
+        break;
+      } catch {
+        // Try the next key.
+      }
+    }
 
     for (const tx of txData ?? []) {
       for (const t of tx.tokenTransfers ?? []) {

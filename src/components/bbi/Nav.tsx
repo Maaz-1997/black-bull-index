@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getAnsemPrice } from "@/lib/price";
+import { SoundToggle } from "@/components/bbi/SoundToggle";
 
 export function Nav() {
   // Real liveness: the dot is "live" only when a fresh $ANSEM price actually comes back.
@@ -73,6 +74,7 @@ export function Nav() {
               "Solana"
             )}
           </span>
+          <SoundToggle />
           <a
             href="#grades"
             className="text-[13px] px-4 h-9 inline-flex items-center rounded-full bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition"

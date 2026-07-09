@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
+import { playCue, unlockAudio } from "@/lib/sound";
 
 const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -17,6 +18,9 @@ export function CtaFooter() {
       return;
     }
     setErr("");
+    // Enter the arena. The click is a user gesture, so this also unlocks audio for the reveal.
+    unlockAudio();
+    playCue("whoosh");
     navigate({ to: "/result/$wallet", params: { wallet: w } });
   };
 

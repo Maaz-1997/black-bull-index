@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { ArrowUpRight, RotateCcw, Download, Trophy, Sparkles } from "lucide-react";
@@ -11,6 +11,7 @@ import {
   AccordionTrigger,
   AccordionContent,
 } from "@/components/ui/accordion";
+import { startLoadingDrone, playCue } from "@/lib/sound";
 import bull from "@/assets/black-bull.png";
 
 export const Route = createFileRoute("/result/$wallet")({
@@ -38,6 +39,10 @@ export const Route = createFileRoute("/result/$wallet")({
     };
   },
   pendingComponent: PendingResult,
+  // Show the charge loader almost immediately on client navigation, and once shown keep it up
+  // long enough for the cinematic beat to land — even when the analysis returns from cache fast.
+  pendingMs: 150,
+  pendingMinMs: 2200,
   errorComponent: ({ error }) => (
     <Fault message={error instanceof Error ? error.message : undefined} />
   ),
@@ -71,6 +76,64 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+// Base58 alphabet (Solana) — used to scramble/decode the wallet hash on the loader.
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const isB58 = (ch: string) => B58.includes(ch);
+
+// Decodes the wallet hash left→right (random base58 chars settling into the real ones), then
+// holds and re-scrambles on a loop so an indeterminate wait always reads as "reading the chain".
+function useScramble(text: string): string {
+  const [out, setOut] = useState(text);
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setOut(text);
+      return;
+    }
+    const chars = text.split("");
+    const decodeMs = 950;
+    const holdMs = 1400;
+    let start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = now - start;
+      if (t < decodeMs) {
+        const p = t / decodeMs;
+        setOut(
+          chars
+            .map((ch, i) =>
+              !isB58(ch) || i / chars.length < p ? ch : B58[Math.floor(Math.random() * B58.length)],
+            )
+            .join(""),
+        );
+      } else if (t < decodeMs + holdMs) {
+        setOut(text);
+      } else {
+        start = now;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [text]);
+  return out;
+}
+
+const LOADER_STATUS = [
+  "Fetching on-chain assets",
+  "Checking OG status",
+  "Weighing the signals",
+  "Consulting the Black Bull",
+];
+
+function useCyclingStatus(): string {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setI((v) => (v + 1) % LOADER_STATUS.length), 1150);
+    return () => clearInterval(id);
+  }, []);
+  return LOADER_STATUS[i];
+}
+
 // Score count-up — the number climbs from 0 to the final value once on mount.
 function useCountUp(target: number, ms = 1400): number {
   const [v, setV] = useState(prefersReducedMotion() ? target : 0);
@@ -95,18 +158,154 @@ function useCountUp(target: number, ms = 1400): number {
 
 /* ---- states ---- */
 
+// The charge: the Black Bull emerges from the dark and charges toward you while the chain is read.
 function PendingResult() {
   const { wallet } = Route.useParams();
+  const decoded = useScramble(short(wallet));
+  const status = useCyclingStatus();
+  const reduced = prefersReducedMotion();
+
+  // Particle configs are generated once, after mount, to avoid any SSR/hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Low arena drone under the charge; fades out when the reveal takes over.
+  useEffect(() => startLoadingDrone(), []);
+
+  const streaks = useMemo(
+    () =>
+      Array.from({ length: 9 }, () => ({
+        top: 8 + Math.random() * 84,
+        dur: 0.7 + Math.random() * 0.7,
+        delay: Math.random() * 1.4,
+        w: 60 + Math.random() * 170,
+        o: 0.25 + Math.random() * 0.4,
+      })),
+    [],
+  );
+  const embers = useMemo(
+    () =>
+      Array.from({ length: 12 }, () => ({
+        left: 30 + Math.random() * 40,
+        dx: Math.random() * 60 - 30,
+        dur: 2.4 + Math.random() * 2.2,
+        delay: Math.random() * 3,
+        size: 2 + Math.random() * 3,
+      })),
+    [],
+  );
+
   return (
-    <main className="relative min-h-screen w-full bg-background flex flex-col items-center justify-center px-6 text-center">
-      <div className="font-mono text-[11px] uppercase tracking-[0.4em] text-gold">
-        Reading the chain
-      </div>
-      <div className="mt-6 font-display text-[13vw] md:text-[7vw] leading-[0.9] tracking-[-0.04em] gold-shimmer">
-        {short(wallet)}
-      </div>
-      <div className="mt-10 h-px w-40 overflow-hidden bg-white/[0.06]">
-        <div className="h-full w-1/2 animate-[bbi-pulse-glow_1.6s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-[#d8b15a] to-transparent" />
+    <main className="relative min-h-screen w-full overflow-hidden bg-background grain flex flex-col items-center justify-center">
+      {/* Arena light — pulses like a heartbeat */}
+      <div
+        className="pointer-events-none fixed inset-0"
+        style={{
+          background: "radial-gradient(60% 45% at 50% 44%, rgba(216,177,90,0.16), transparent 70%)",
+          animation: reduced ? undefined : "bbi-pulse-glow 3.2s ease-in-out infinite",
+        }}
+      />
+
+      {/* Wind / speed streaks rushing past */}
+      {mounted &&
+        !reduced &&
+        streaks.map((s, i) => (
+          <div
+            key={i}
+            className="animate-rush pointer-events-none absolute"
+            style={{
+              top: `${s.top}%`,
+              left: 0,
+              height: 2,
+              width: s.w,
+              opacity: s.o,
+              background: "linear-gradient(90deg, transparent, #f4d78a, transparent)",
+              filter: "blur(0.5px)",
+              animationDuration: `${s.dur}s`,
+              animationDelay: `${s.delay}s`,
+            }}
+          />
+        ))}
+
+      {/* The bull — charges in once, then holds a breathing power idle */}
+      <motion.div
+        className="relative z-[1] will-change-transform"
+        initial={reduced ? false : { scale: 0.34, y: 46, opacity: 0, filter: "blur(16px)" }}
+        animate={{ scale: 1, y: 0, opacity: 1, filter: "blur(0px)" }}
+        transition={{ duration: reduced ? 0.5 : 1.5, ease: [0.16, 1, 0.3, 1] }}
+      >
+        {/* Dust at the hooves */}
+        <div
+          className="pointer-events-none absolute left-1/2 bottom-2 h-[150px] w-[440px] -translate-x-1/2 rounded-[50%] blur-3xl"
+          style={{
+            background:
+              "radial-gradient(50% 50% at 50% 50%, rgba(216,177,90,0.30), transparent 70%)",
+            animation: reduced ? undefined : "bbi-drift 4s ease-in-out infinite alternate",
+          }}
+        />
+        <motion.img
+          src={bull}
+          alt=""
+          className="relative h-[44vh] w-auto object-contain drop-shadow-[0_50px_90px_rgba(0,0,0,0.9)] md:h-[52vh]"
+          animate={reduced ? undefined : { scale: [1, 1.035, 1], y: [0, -6, 0] }}
+          transition={reduced ? undefined : { duration: 2.4, ease: "easeInOut", repeat: Infinity }}
+        />
+        {/* Rising embers */}
+        {mounted &&
+          !reduced &&
+          embers.map((e, i) => (
+            <span
+              key={i}
+              className="pointer-events-none absolute rounded-full"
+              style={{
+                bottom: "6%",
+                left: `${e.left}%`,
+                width: e.size,
+                height: e.size,
+                background: "#f4d78a",
+                boxShadow: "0 0 8px #f4d78a",
+                ["--dx" as string]: `${e.dx}px`,
+                animation: `bbi-particle ${e.dur}s ease-out ${e.delay}s infinite`,
+              }}
+            />
+          ))}
+      </motion.div>
+
+      {/* Kinetic type */}
+      <div className="relative z-[2] mt-4 flex flex-col items-center px-6 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.8 }}
+          className="font-mono text-[11px] uppercase tracking-[0.45em] text-gold"
+        >
+          Reading the chain
+        </motion.div>
+        <div className="mt-4 font-display text-[13vw] leading-[0.9] tracking-[-0.04em] gold-gradient md:text-[6vw]">
+          {decoded}
+        </div>
+        <div className="mt-4 h-4 overflow-hidden">
+          <motion.div
+            key={status}
+            initial={{ y: 14, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.5, ease: EASE }}
+            className="font-mono text-[11px] uppercase tracking-[0.3em] text-white/45"
+          >
+            {status}…
+          </motion.div>
+        </div>
+        <div className="relative mt-8 h-px w-56 overflow-hidden bg-white/[0.06]">
+          {reduced ? (
+            <div className="absolute inset-y-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-[#f4d78a] to-transparent" />
+          ) : (
+            <motion.div
+              className="absolute inset-y-0 w-1/3 bg-gradient-to-r from-transparent via-[#f4d78a] to-transparent"
+              animate={{ x: ["-130%", "380%"] }}
+              transition={{ duration: 1.4, ease: "easeInOut", repeat: Infinity }}
+            />
+          )}
+        </div>
       </div>
     </main>
   );
@@ -172,6 +371,11 @@ function Reveal({ data }: { data: AnalyzeResult }) {
   const current = { ...data, roast }; // share card + downloads reflect the live roast
   const score = useCountUp(data.score);
 
+  // The verdict lands.
+  useEffect(() => {
+    playCue("impact");
+  }, []);
+
   const beat = (i: number) => ({
     initial: { opacity: 0, y: 30, filter: "blur(12px)" },
     animate: { opacity: 1, y: 0, filter: "blur(0px)" },
@@ -183,6 +387,20 @@ function Reveal({ data }: { data: AnalyzeResult }) {
 
   return (
     <main className="relative min-h-screen w-full bg-background overflow-x-clip">
+      {/* Impact flash — the charge lands and the verdict arrives (one-time, on mount) */}
+      {!prefersReducedMotion() && (
+        <motion.div
+          className="pointer-events-none fixed inset-0 z-50"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 40%, rgba(244,215,138,0.55), transparent 60%)",
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.85, 0] }}
+          transition={{ duration: 0.9, ease: "easeOut" }}
+        />
+      )}
+
       {/* Ambient: constant gold wash + a faint grade-tinted glow (accent only) */}
       <div
         className="pointer-events-none fixed inset-0"

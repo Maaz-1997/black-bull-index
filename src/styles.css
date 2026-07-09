@@ -333,6 +333,25 @@
   animation: bbi-shimmer 8s linear infinite;
 }
 
+/* Speed/wind streaks for the "charge" loader — thin gold lines rushing past the bull. */
+@keyframes bbi-rush {
+  0% {
+    opacity: 0;
+    transform: translate3d(55vw, 0, 0) scaleX(0.5);
+  }
+  25% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-70vw, 0, 0) scaleX(1.6);
+  }
+}
+
+@utility animate-rush {
+  animation: bbi-rush linear infinite;
+}
+
 /* Accessibility: honour reduced-motion. Neutralises the CSS keyframe work (ring rotation,
    gold shimmer, float, pulse-glow) for users who ask for less motion. GSAP scroll timelines
    are scroll-linked (not autoplaying), so they remain but do not self-animate. */

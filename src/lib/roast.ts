@@ -4,6 +4,7 @@
 // Server-only — reads GROQ_API_KEY. On any failure / over-quota / empty output, falls back to
 // a template roast so a roast ALWAYS resolves.
 import { TEMPLATE_ROASTS } from "./roastTemplates";
+import { serverEnvKeys } from "./env";
 import type { WalletStats, ScoreResult } from "./score";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -56,68 +57,74 @@ export async function generateRoast(
   result: ScoreResult,
   ansemPrice: number = 0,
 ): Promise<string> {
-  const apiKey = process.env.GROQ_API_KEY;
+  const keys = serverEnvKeys("GROQ_API_KEY");
   // No key (e.g. quota not configured yet) — go straight to the template so a roast still resolves.
-  if (!apiKey) return fallback(result.grade, stats);
+  if (keys.length === 0) return fallback(result.grade, stats);
 
-  try {
-    const ansemValueUsd =
-      ansemPrice > 0
-        ? `$${(stats.ansemBalance * ansemPrice).toLocaleString("en-US", { maximumFractionDigits: 0 })}`
-        : "unknown";
+  const ansemValueUsd =
+    ansemPrice > 0
+      ? `$${(stats.ansemBalance * ansemPrice).toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+      : "unknown";
 
-    const soldAirdrop = stats.receivedAirdrop && stats.ansemBalance === 0;
+  const soldAirdrop = stats.receivedAirdrop && stats.ansemBalance === 0;
 
-    const userPrompt = [
-      `Identity: ${result.identity.name} (${result.grade}, ${result.score}/100)`,
-      `ANSEM held: ${stats.ansemBalance.toLocaleString()} tokens`,
-      `ANSEM current value: ${ansemValueUsd}`,
-      `SOL balance: ${stats.solBalance.toFixed(2)} SOL`,
-      `Holds WIF: ${stats.wifBalance > 0 ? `yes — ${stats.wifBalance.toLocaleString()} WIF` : "no"}`,
-      `Holds BONK: ${stats.bonkBalance > 0 ? `yes — ${stats.bonkBalance.toLocaleString()} BONK` : "no"}`,
-      `OG holder (held before June 25 pump): ${stats.isOgHolder ? "YES — was holding before 20,000% run" : "no"}`,
-      `Received airdrop from Ansem direct: ${stats.receivedAirdrop ? "YES" : "no"}`,
-      `Airdrop fate: ${
-        soldAirdrop
-          ? "SOLD EVERYTHING — received airdrop, zero ANSEM balance now. Destroy them specifically for this."
-          : stats.receivedAirdrop
-            ? "received and still holding — acknowledge the loyalty"
-            : "did not receive airdrop"
-      }`,
-      `Wallet age: ${stats.walletAgeDays} days (${(stats.walletAgeDays / 365).toFixed(1)} years on Solana)`,
-      ``,
-      `INSTRUCTION: Write the roast that makes this specific wallet holder stop scrolling.`,
-      `Include the exact ANSEM balance or dollar figure in the body of the roast.`,
-      `End with the one sentence they will screenshot and post.`,
-    ].join("\n");
+  const userPrompt = [
+    `Identity: ${result.identity.name} (${result.grade}, ${result.score}/100)`,
+    `ANSEM held: ${stats.ansemBalance.toLocaleString()} tokens`,
+    `ANSEM current value: ${ansemValueUsd}`,
+    `SOL balance: ${stats.solBalance.toFixed(2)} SOL`,
+    `Holds WIF: ${stats.wifBalance > 0 ? `yes — ${stats.wifBalance.toLocaleString()} WIF` : "no"}`,
+    `Holds BONK: ${stats.bonkBalance > 0 ? `yes — ${stats.bonkBalance.toLocaleString()} BONK` : "no"}`,
+    `OG holder (held before June 25 pump): ${stats.isOgHolder ? "YES — was holding before 20,000% run" : "no"}`,
+    `Received airdrop from Ansem direct: ${stats.receivedAirdrop ? "YES" : "no"}`,
+    `Airdrop fate: ${
+      soldAirdrop
+        ? "SOLD EVERYTHING — received airdrop, zero ANSEM balance now. Destroy them specifically for this."
+        : stats.receivedAirdrop
+          ? "received and still holding — acknowledge the loyalty"
+          : "did not receive airdrop"
+    }`,
+    `Wallet age: ${stats.walletAgeDays} days (${(stats.walletAgeDays / 365).toFixed(1)} years on Solana)`,
+    ``,
+    `INSTRUCTION: Write the roast that makes this specific wallet holder stop scrolling.`,
+    `Include the exact ANSEM balance or dollar figure in the body of the roast.`,
+    `End with the one sentence they will screenshot and post.`,
+  ].join("\n");
 
-    const res = await fetch(GROQ_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: GROQ_MODEL,
-        max_tokens: 180,
-        temperature: 0.92,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-    });
+  const body = JSON.stringify({
+    model: GROQ_MODEL,
+    max_tokens: 180,
+    temperature: 0.92,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userPrompt },
+    ],
+  });
 
-    // Over quota (429), auth issue, or any non-2xx — fall back to a template.
-    if (!res.ok) return fallback(result.grade, stats);
+  // Try each key in order; a rate-limited (429) / auth / non-2xx / empty response falls through
+  // to the next key. If every key fails, use a template so a roast ALWAYS resolves.
+  for (const apiKey of keys) {
+    try {
+      const res = await fetch(GROQ_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body,
+      });
+      if (!res.ok) continue;
 
-    const data = (await res.json()) as GroqChatResponse;
-    const roast = data.choices?.[0]?.message?.content?.trim();
-    if (!roast || roast.length < 10) return fallback(result.grade, stats);
-    return roast;
-  } catch {
-    return fallback(result.grade, stats);
+      const data = (await res.json()) as GroqChatResponse;
+      const roast = data.choices?.[0]?.message?.content?.trim();
+      if (!roast || roast.length < 10) continue;
+      return roast;
+    } catch {
+      // Try the next key.
+    }
   }
+
+  return fallback(result.grade, stats);
 }
 
 // Template fallback with wallet-specific substitutions. Spec §15.1/§15.3.
