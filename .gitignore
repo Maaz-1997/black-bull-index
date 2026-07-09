@@ -37,4 +37,7 @@ dist-ssr
 !.env.example
 
 # personal docs and folders 
-kiro/
+.kiro/
+
+# wrangler dry-run output
+.wrangler-dry/

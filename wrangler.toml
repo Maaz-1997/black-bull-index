@@ -10,11 +10,18 @@
 # Nitro emits .output/server/wrangler.json at build; deploy with `wrangler deploy` (or nitro deploy).
 
 name = "black-bull-index"
+account_id = "b7ed2a17088d0e17382c3afc74d9357e"
 compatibility_date = "2026-07-08"
 compatibility_flags = ["nodejs_compat"]
 
+# No workers.dev URL — the site is served from the custom domain (blackbullindex.com),
+# which is attached via the Cloudflare dashboard (Workers → Domains) to avoid the DNS 409
+# conflict wrangler hits when a placeholder record already exists for the zone.
+workers_dev = false
+
+# Binding name MUST stay "DB" — the app reads it via globalThis.__env__.DB.
 [[d1_databases]]
 binding = "DB"
 database_name = "black-bull-index"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "b84f813a-5017-4f36-bc5c-188f9655fbae"
 migrations_dir = "migrations"
