@@ -84,7 +84,9 @@ export async function generateRoast(
           ? "received and still holding — acknowledge the loyalty"
           : "did not receive airdrop"
     }`,
-    `Wallet age: ${stats.walletAgeDays} days (${(stats.walletAgeDays / 365).toFixed(1)} years on Solana)`,
+    stats.walletAgeKnown === false
+      ? `Wallet age: ESTABLISHED — 1,000+ transactions on Solana, exact first-transaction date indeterminate. This is a veteran wallet. DO NOT state a specific number of days on Solana; refer to it as long-established / deep history.`
+      : `Wallet age: ${stats.walletAgeDays} days (${(stats.walletAgeDays / 365).toFixed(1)} years on Solana)`,
     ``,
     `INSTRUCTION: Write the roast that makes this specific wallet holder stop scrolling.`,
     `Include the exact ANSEM balance or dollar figure in the body of the roast.`,

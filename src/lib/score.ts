@@ -17,7 +17,11 @@ export interface WalletStats {
   bonkBalance: number;
   isOgHolder: boolean; // first ANSEM tx before OG_CUTOFF_DATE
   receivedAirdrop: boolean; // received ANSEM from Ansem's wallet
-  walletAgeDays: number;
+  walletAgeDays: number; // 0 when unknown (see walletAgeKnown)
+  // false → wallet is "established" (1000+ txs) but its first-ever tx couldn't be reached cheaply,
+  // so the exact age is indeterminate. Treated as a veteran wallet for scoring. Undefined (legacy
+  // cached data) is treated as "known" so old records keep their original age behaviour.
+  walletAgeKnown?: boolean;
 }
 
 export interface ScoreResult {
@@ -56,9 +60,12 @@ export function calculateScore(stats: WalletStats): ScoreResult {
   if (stats.receivedAirdrop && stats.ansemBalance > 0)
     add("loyalAirdrop", SCORE_WEIGHTS.loyalAirdrop);
 
-  // Wallet age bonus
-  if (stats.walletAgeDays > 365) add("walletAge1year", SCORE_WEIGHTS.walletAge1year);
-  if (stats.walletAgeDays > 730) add("walletAge2years", SCORE_WEIGHTS.walletAge2years);
+  // Wallet age bonus. An "established" wallet (1000+ txs, exact age indeterminate) is treated as a
+  // long-lived veteran and earns both longevity bonuses; otherwise we use the exact age in days.
+  const established = stats.walletAgeKnown === false;
+  if (established || stats.walletAgeDays > 365) add("walletAge1year", SCORE_WEIGHTS.walletAge1year);
+  if (established || stats.walletAgeDays > 730)
+    add("walletAge2years", SCORE_WEIGHTS.walletAge2years);
 
   // Penalty — received airdrop then sold everything
   if (stats.receivedAirdrop && stats.ansemBalance === 0)

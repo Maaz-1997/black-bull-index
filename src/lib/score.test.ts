@@ -140,3 +140,21 @@ test("cumulative ANSEM tiers stack for a 2M holder", () => {
   expect(r.breakdown.ansemOver1m).toBe(10);
   expect(r.score).toBe(45);
 });
+
+test("established wallet (age indeterminate) earns both longevity bonuses", () => {
+  // walletAgeKnown:false marks a 1000+ tx veteran whose exact age can't be reached cheaply.
+  const established = calculateScore(
+    wallet({ ansemBalance: 5000, solBalance: 10, walletAgeDays: 0, walletAgeKnown: false }),
+  );
+  // ansemAny(10) + solBalance(5) + walletAge1year(5) + walletAge2years(5) = 25
+  expect(established.breakdown.walletAge1year).toBe(5);
+  expect(established.breakdown.walletAge2years).toBe(5);
+  expect(established.score).toBe(25);
+
+  // A genuinely new wallet (known, 0 days) gets no longevity bonus.
+  const fresh = calculateScore(
+    wallet({ ansemBalance: 5000, solBalance: 10, walletAgeDays: 0, walletAgeKnown: true }),
+  );
+  expect(fresh.breakdown.walletAge1year).toBeUndefined();
+  expect(fresh.score).toBe(15);
+});

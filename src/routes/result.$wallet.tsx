@@ -364,7 +364,11 @@ function DataChips({ data }: { data: AnalyzeResult }) {
       {s.wifBalance > 0 && <Chip>WIF</Chip>}
       {s.bonkBalance > 0 && <Chip>BONK</Chip>}
       {s.solBalance > 0 && <Chip>{s.solBalance.toFixed(2)} SOL</Chip>}
-      {s.walletAgeDays > 365 && <Chip>{years}Y ON-CHAIN</Chip>}
+      {s.walletAgeKnown === false ? (
+        <Chip>ESTABLISHED</Chip>
+      ) : (
+        s.walletAgeDays > 365 && <Chip>{years}Y ON-CHAIN</Chip>
+      )}
     </div>
   );
 }

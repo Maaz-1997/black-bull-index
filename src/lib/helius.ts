@@ -35,6 +35,7 @@ interface HeliusEnhancedTx {
 }
 
 interface SignatureInfo {
+  signature?: string;
   blockTime?: number | null;
 }
 
@@ -141,26 +142,18 @@ export async function fetchWalletData(wallet: string): Promise<WalletStats> {
 async function checkHistory(
   wallet: string,
   keys: string[],
-): Promise<Pick<WalletStats, "isOgHolder" | "receivedAirdrop" | "walletAgeDays">> {
+): Promise<
+  Pick<WalletStats, "isOgHolder" | "receivedAirdrop" | "walletAgeDays" | "walletAgeKnown">
+> {
   let isOgHolder = false;
   let receivedAirdrop = false;
   let walletAgeDays = 0;
+  let walletAgeKnown = true;
 
   try {
-    // Wallet age via Helius RPC (the free public RPC at api.mainnet-beta.solana.com is heavily
-    // throttled and was failing silently → age defaulted to 0). Falls back across keys.
-    const sigData = await heliusRpc<SignaturesResponse>(keys, {
-      jsonrpc: "2.0",
-      id: "bbi-wallet-age",
-      method: "getSignaturesForAddress",
-      params: [wallet, { limit: 1000 }],
-    });
-    // getSignaturesForAddress returns newest-first; the oldest in the page is the last element.
-    const page = sigData?.result ?? [];
-    const oldest = page[page.length - 1];
-    if (oldest?.blockTime) {
-      walletAgeDays = Math.floor((Date.now() / 1000 - oldest.blockTime) / 86400);
-    }
+    const age = await fetchWalletAge(keys, wallet);
+    walletAgeDays = age.days;
+    walletAgeKnown = age.known;
 
     // Enhanced transactions via Helius for OG + airdrop check. Falls back across keys.
     let txData: HeliusEnhancedTx[] = [];
@@ -197,5 +190,47 @@ async function checkHistory(
     // History check failed — safe defaults keep scoring functional.
   }
 
-  return { isOgHolder, receivedAirdrop, walletAgeDays };
+  return { isOgHolder, receivedAirdrop, walletAgeDays, walletAgeKnown };
+}
+
+// Wallet age from the FIRST on-chain signature. getSignaturesForAddress returns newest-first, so we
+// walk backwards with the `before` cursor up to MAX_PAGES to reach genesis. If we exhaust the
+// history we return the exact age; if the wallet is too active to reach its first tx within the
+// budget, age is indeterminate (known:false) — the caller treats it as an established veteran and
+// never claims a specific "N days". A wallet with no signatures is genuinely new (known:true, 0).
+async function fetchWalletAge(
+  keys: string[],
+  wallet: string,
+): Promise<{ days: number; known: boolean }> {
+  const MAX_PAGES = 5; // up to ~5000 signatures — exact for the vast majority of real wallets
+  let before: string | undefined;
+  let oldestBlockTime: number | undefined;
+  let reachedGenesis = false;
+
+  for (let p = 0; p < MAX_PAGES; p++) {
+    const opts: Record<string, unknown> = { limit: 1000 };
+    if (before) opts.before = before;
+    const data = await heliusRpc<SignaturesResponse>(keys, {
+      jsonrpc: "2.0",
+      id: "bbi-wallet-age",
+      method: "getSignaturesForAddress",
+      params: [wallet, opts],
+    });
+    const page = data?.result ?? [];
+    if (page.length === 0) {
+      reachedGenesis = true;
+      break;
+    }
+    const last = page[page.length - 1];
+    if (last?.blockTime) oldestBlockTime = last.blockTime;
+    before = last?.signature;
+    if (page.length < 1000) {
+      reachedGenesis = true;
+      break;
+    }
+  }
+
+  if (oldestBlockTime === undefined) return { days: 0, known: true }; // no transactions → new
+  if (!reachedGenesis) return { days: 0, known: false }; // established, exact age indeterminate
+  return { days: Math.floor((Date.now() / 1000 - oldestBlockTime) / 86400), known: true };
 }

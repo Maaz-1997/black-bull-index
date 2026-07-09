@@ -44,6 +44,7 @@ export interface AnalyzeResult extends ScoreResult {
     isOgHolder: boolean;
     receivedAirdrop: boolean;
     walletAgeDays: number;
+    walletAgeKnown: boolean;
   };
 }
 
@@ -80,6 +81,7 @@ function buildResult(
       isOgHolder: stats.isOgHolder,
       receivedAirdrop: stats.receivedAirdrop,
       walletAgeDays: stats.walletAgeDays,
+      walletAgeKnown: stats.walletAgeKnown !== false,
     },
   };
 }
