@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Black Bull · Tweet Studio</title>
+    <style>
+      :root {
+        --ink: #050505;
+        --ink2: #0c0b09;
+        --gold: #f4d78a;
+        --gold-deep: #b98a2d;
+        --muted: #8a8177;
+        --line: rgba(244, 215, 138, 0.14);
+        --up: #7ed321;
+        --down: #d0021b;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background:
+          radial-gradient(70% 50% at 50% -10%, rgba(216, 177, 90, 0.1), transparent 70%), var(--ink);
+        color: #eaeaea;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--gold);
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 40px 20px 80px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .mark {
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        background:
+          radial-gradient(120% 80% at 20% 0%, rgba(255, 231, 168, 0.6), transparent 60%),
+          linear-gradient(135deg, #6a4a15, #d8b15a 45%, #f4d78a 60%, #b98a2d 80%);
+        position: relative;
+      }
+      .mark::after {
+        content: "";
+        position: absolute;
+        inset: 4px;
+        border-radius: 3px;
+        background: var(--ink);
+      }
+      h1 {
+        font-size: 15px;
+        letter-spacing: 0.02em;
+        margin: 0;
+        font-weight: 600;
+      }
+      h1 span {
+        color: var(--muted);
+      }
+      .kicker {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 11px;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: var(--gold-deep);
+      }
+      .display {
+        font-size: clamp(30px, 6vw, 52px);
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+        margin: 14px 0 8px;
+        font-weight: 700;
+        background: linear-gradient(180deg, #fbe7bd, #f4d78a 45%, #b98a2d);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .sub {
+        color: var(--muted);
+        max-width: 640px;
+      }
+      /* live stats */
+      .stats {
+        margin: 28px 0;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      .stat {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px 16px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+      }
+      .stat .l {
+        font-family: ui-monospace, monospace;
+        font-size: 10px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .stat .v {
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 4px;
+      }
+      .hooks {
+        border-left: 2px solid var(--gold-deep);
+        padding: 6px 0 6px 16px;
+        margin: 8px 0 24px;
+        color: #cfc7b7;
+        font-size: 14px;
+      }
+      .hooks b {
+        color: var(--gold);
+      }
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 30px 0 18px;
+      }
+      .tab {
+        border: 1px solid var(--line);
+        background: transparent;
+        color: #cfc7b7;
+        border-radius: 999px;
+        padding: 8px 16px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: 0.15s;
+      }
+      .tab:hover {
+        background: rgba(244, 215, 138, 0.06);
+      }
+      .tab.active {
+        background: linear-gradient(180deg, #f4d78a, #c8a34a);
+        color: #1a0f00;
+        border-color: transparent;
+        font-weight: 600;
+      }
+      .tab.today::after {
+        content: " · today";
+        color: inherit;
+        opacity: 0.7;
+      }
+      .section-title {
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 34px 0 14px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 12px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.008));
+      }
+      .card .cat {
+        font-family: ui-monospace, monospace;
+        font-size: 10px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--gold-deep);
+        margin-bottom: 8px;
+      }
+      .card .txt {
+        white-space: pre-wrap;
+        font-size: 15.5px;
+        color: #ece7dc;
+      }
+      .card .meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .count {
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .count.over {
+        color: var(--down);
+      }
+      .btns {
+        display: flex;
+        gap: 8px;
+      }
+      button.act {
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 12.5px;
+        cursor: pointer;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: #cfc7b7;
+        transition: 0.15s;
+      }
+      button.act:hover {
+        background: rgba(244, 215, 138, 0.08);
+        color: #fff;
+      }
+      button.tweet {
+        background: linear-gradient(180deg, #f4d78a, #c8a34a);
+        color: #1a0f00;
+        border-color: transparent;
+        font-weight: 600;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 18px;
+      }
+      input.w {
+        flex: 1;
+        min-width: 240px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 12px 18px;
+        color: #fff;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        outline: none;
+      }
+      input.w:focus {
+        border-color: rgba(244, 215, 138, 0.5);
+      }
+      .note {
+        font-size: 12.5px;
+        color: var(--muted);
+        border: 1px dashed var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-top: 10px;
+      }
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        background: #1a0f00;
+        color: var(--gold);
+        border: 1px solid var(--gold-deep);
+        border-radius: 999px;
+        padding: 10px 20px;
+        font-size: 13px;
+        opacity: 0;
+        transition: 0.25s;
+        pointer-events: none;
+        z-index: 50;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+      @media (max-width: 640px) {
+        .stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <div class="mark"></div>
+        <h1>Black Bull <span>Tweet Studio</span></h1>
+      </div>
+
+      <div class="kicker" style="margin-top: 26px">Read the chain. Reveal the myth.</div>
+      <div class="display">A week of tweets, ready to fire.</div>
+      <p class="sub">
+        Live $ANSEM data is pulled from DexScreener (same source as blackbullindex.com). Each day
+        surfaces a fresh set of 5. Personalise before posting — never fire identical text on repeat.
+      </p>
+
+      <div class="stats" id="stats">
+        <div class="stat">
+          <div class="l">$ANSEM price</div>
+          <div class="v" id="s-price">…</div>
+        </div>
+        <div class="stat">
+          <div class="l">24h</div>
+          <div class="v" id="s-change">…</div>
+        </div>
+        <div class="stat">
+          <div class="l">Market cap</div>
+          <div class="v" id="s-mcap">…</div>
+        </div>
+        <div class="stat">
+          <div class="l">24h volume</div>
+          <div class="v" id="s-vol">…</div>
+        </div>
+      </div>
+
+      <div class="hooks" id="hooks">Loading trending hooks…</div>
+
+      <div class="section-title">Today's 5</div>
+      <div id="today"></div>
+
+      <div class="section-title">7-day calendar</div>
+      <div class="tabs" id="tabs"></div>
+      <div id="plan"></div>
+
+      <div class="section-title">Wallet → tweet</div>
+      <div class="row">
+        <input
+          class="w"
+          id="wallet"
+          placeholder="Paste a Solana wallet (yours, a whale, a ghost)"
+        />
+        <button class="act tweet" onclick="walletTweet()">Draft tweet + open result</button>
+      </div>
+      <div class="note">
+        Opens <b>blackbullindex.com/result/&lt;wallet&gt;</b> (the card unfurls on X automatically)
+        and a pre-filled tweet. Great for "wallet of the day" callouts.
+      </div>
+
+      <div class="section-title">Reply bank</div>
+      <p class="sub" style="margin-top: -4px">
+        Use these when Ansem or a big account posts something relevant. Rewrite each in your own
+        words — reply where you genuinely add value, not everywhere.
+      </p>
+      <div id="replies"></div>
+
+      <div class="note" style="margin-top: 26px">
+        Growth mechanics: every reply/tweet tags the loop back to a wallet read. Aim for 2–3 posts +
+        2 genuine replies daily. Best windows are US morning and evening (crypto X peak). Attach a
+        downloaded card GIF/PNG to your strongest tweet of the day — media out-performs plain links.
+      </div>
+    </div>
+
+    <div class="toast" id="toast">Copied</div>
+
+    <script>
+      const ANSEM_MINT = "9cRCn9rGT8V2imeM2BaKs13yhMEais3ruM3rPvTGpump";
+      const SITE = "https://blackbullindex.com";
+
+      // Live data placeholders; replaced after DexScreener fetch. Fallbacks keep tweets sane offline.
+      let LIVE = { price: "$0.30", change: "+0%", mcap: "$150M", vol: "$20M", changeUp: true };
+
+      // ---- Tweet bank. {price} {mcap} {change} are injected live. ----
+      const TWEETS = [
+        {
+          c: "concept",
+          t: "Every wallet is a memoir written in transactions.\n\nI built a machine that reads yours and reveals which of 7 identities you are on the Black Bull Index.\n\nNo wallet connection. Read-only.\n\nblackbullindex.com",
+        },
+        {
+          c: "concept",
+          t: "The chain already knows who you are. It just never said it out loud.\n\nThe Black Bull Index does.\n\nblackbullindex.com",
+        },
+        {
+          c: "concept",
+          t: "Read the chain. Reveal the myth.\n\nPaste any Solana wallet → get 1 of 7 on-chain identities from its $ANSEM history.\n\nblackbullindex.com",
+        },
+        {
+          c: "concept",
+          t: "Your transactions are already written. We just read them back to you.\n\nblackbullindex.com",
+        },
+        {
+          c: "origin",
+          t: "Ansem turned creator fees into a $7M airdrop and a 20,000% run.\n\nSo I built the Black Bull Index — it reads your wallet and tells you if you were early, faithful, or a ghost.\n\nblackbullindex.com @blknoiz06",
+        },
+        {
+          c: "gift",
+          t: "No token. No monetisation. No wallet connection.\n\nJust a chain reader I built for the $ANSEM community as a gift. Read your on-chain identity:\n\nblackbullindex.com @blknoiz06",
+        },
+        {
+          c: "identity",
+          t: "Got read by the Black Bull Index.\n\nTHE ARCHITECT. S+.\n\nThe chain doesn't lie. What's yours?\n\nblackbullindex.com",
+        },
+        {
+          c: "identity",
+          t: "7 identities. One chain.\n\nArchitect · Faithful · Convert · Curious · Tourist · Ghost · Unawakened.\n\nMost of you already know which one you are. Confirm it:\n\nblackbullindex.com",
+        },
+        {
+          c: "identity",
+          t: "Some wallets are portfolios. Some are arguments.\n\nThe Black Bull Index tells you which one yours is.\n\nblackbullindex.com",
+        },
+        {
+          c: "roast",
+          t: "This thing roasted my wallet so hard I had to sit down.\n\nPaste yours if you're brave:\n\nblackbullindex.com",
+        },
+        {
+          c: "roast",
+          t: "The Black Bull Index called my wallet 'a question rather than an answer.'\n\nBrutal. Accurate. Your turn:\n\nblackbullindex.com",
+        },
+        {
+          c: "roast",
+          t: "AI that reads your Solana wallet and delivers a verdict with real numbers from the chain.\n\nMost of you are not ready for what it says.\n\nblackbullindex.com",
+        },
+        {
+          c: "ghost",
+          t: "Someone sold 8M airdropped $ANSEM for $207K. It'd be worth ~$2.4M today.\n\nThe Black Bull Index has a name for that wallet: THE GHOST.\n\nCheck how the chain remembers you:\n\nblackbullindex.com",
+        },
+        {
+          c: "ghost",
+          t: "The airdrop landed in thousands of wallets.\n\nSome held. Some ghosted. The chain wrote it all down — permanent, public, retrievable.\n\nRead your record:\n\nblackbullindex.com @blknoiz06",
+        },
+        {
+          c: "ghost",
+          t: "The chain does not forget the wallet that fumbled the stimmy.\n\nBut it does allow new chapters. See where you stand:\n\nblackbullindex.com",
+        },
+        {
+          c: "mission",
+          t: "25,000 → 1,000,000 holders.\n\nEvery wallet that checks its Black Bull identity and shares it is one more node in the mission.\n\nRead yours:\n\nblackbullindex.com @blknoiz06",
+        },
+        {
+          c: "mission",
+          t: "They said $ANSEM under a billion is free.\n\nThe Black Bull Index tells you if your wallet is positioned like it believes that.\n\nblackbullindex.com",
+        },
+        {
+          c: "market",
+          t: "$ANSEM {price} ({change} 24h) · mcap {mcap}.\n\nThe Black Bull is running. Which of the 7 identities is your wallet?\n\nblackbullindex.com",
+        },
+        {
+          c: "market",
+          t: "It surpassed TRUMP in market cap and it's not slowing down.\n\nThe only question left is what your wallet says about you.\n\nblackbullindex.com",
+        },
+        {
+          c: "market",
+          t: "$ANSEM sitting at {mcap} mcap.\n\nThe wallets that were early are already documented on-chain. Find out if yours is one of them:\n\nblackbullindex.com",
+        },
+        {
+          c: "leaderboard",
+          t: "There's now a public leaderboard of every wallet read by the Black Bull Index, ranked by conviction.\n\nWhere do you land?\n\nblackbullindex.com/leaderboard",
+        },
+        {
+          c: "leaderboard",
+          t: "The trenches are documented now.\n\nLive leaderboard of on-chain $ANSEM identities, ranked. Climb it:\n\nblackbullindex.com/leaderboard",
+        },
+        {
+          c: "share",
+          t: "Paste any Solana wallet. Yours. Your friend's. That guy who paper-handed the airdrop.\n\nThe Black Bull Index reads them all.\n\nblackbullindex.com",
+        },
+        { c: "share", t: "You can't argue with the chain. It has receipts.\n\nblackbullindex.com" },
+        {
+          c: "share",
+          t: "Screenshot your Black Bull identity card and tag someone whose wallet you want to expose.\n\nblackbullindex.com",
+        },
+        {
+          c: "concept",
+          t: "Built entirely on public on-chain data. No connection. No permissions. No storage of anything private.\n\nJust the truth your wallet already tells.\n\nblackbullindex.com",
+        },
+        {
+          c: "identity",
+          t: "The difference between THE FAITHFUL and THE ARCHITECT is usually just time.\n\nSee how close you are:\n\nblackbullindex.com",
+        },
+        {
+          c: "roast",
+          t: "'You arrived. You looked around. You bought just enough to say you were here.'\n\nThe Black Bull Index does not miss.\n\nblackbullindex.com",
+        },
+        {
+          c: "mission",
+          t: "Every F-grade wallet that shares its roast is an ad for the mission.\n\nEvery Architect is proof it works.\n\nRead the chain:\n\nblackbullindex.com @blknoiz06",
+        },
+        {
+          c: "market",
+          t: "The run was 20,000%. The airdrop was $7M. The record is permanent.\n\nWhat does your wallet's record say?\n\nblackbullindex.com",
+        },
+        {
+          c: "share",
+          t: "Reply with your Black Bull grade. I'll go first: S+ / THE ARCHITECT.\n\nProve it → blackbullindex.com",
+        },
+        {
+          c: "identity",
+          t: "There is no higher classification than THE ARCHITECT.\n\nEarly. Heavy. Still holding. Is that your wallet, or are you coping?\n\nblackbullindex.com",
+        },
+        {
+          c: "ghost",
+          t: "The Ghost doesn't mean to miss. They just always seem to be somewhere else when it actually happens.\n\nThe chain logged it. Read it:\n\nblackbullindex.com",
+        },
+        {
+          c: "concept",
+          t: "Most 'wallet checkers' show you a number.\n\nThe Black Bull Index shows you a mirror — 7 identities, a score, and a roast written from your real on-chain history.\n\nblackbullindex.com",
+        },
+        {
+          c: "gift",
+          t: "Ansem gave the community an airdrop. I gave it a mirror.\n\nThe Black Bull Index reads any Solana wallet and reveals who it really is.\n\nblackbullindex.com @blknoiz06",
+        },
+        {
+          c: "market",
+          t: "$ANSEM {price}, up and to the right.\n\nThe wallets calling the top are usually the ones the Black Bull Index grades as Tourists. Check yourself:\n\nblackbullindex.com",
+        },
+        {
+          c: "leaderboard",
+          t: "Rank [your #]. Top [your %].\n\nMy wallet made its case. Does yours?\n\nblackbullindex.com/leaderboard",
+        },
+        {
+          c: "share",
+          t: "The most humbling 10 seconds in crypto: pasting your wallet into the Black Bull Index.\n\nblackbullindex.com",
+        },
+        {
+          c: "identity",
+          t: "Seven identities. Which are you?\n\n🏛 Architect\n🔥 Faithful\n⚡ Convert\n🌀 Curious\n🧭 Tourist\n👻 Ghost\n🕯 Unawakened\n\nblackbullindex.com",
+        },
+        {
+          c: "concept",
+          t: "The Black Bull is not a token. It is a record — of who was early, of who held, of who understood.\n\nRead yours:\n\nblackbullindex.com",
+        },
+      ];
+
+      const REPLIES = [
+        {
+          c: "reply to Ansem",
+          t: "The wallets that were here for this are permanently on-chain. Built a tool that reads exactly who held and who ghosted → blackbullindex.com. It's a gift to the community, ser.",
+        },
+        {
+          c: "reply to a bag flex",
+          t: "Run it through the Black Bull Index — let's see if the chain agrees you're an Architect 👀 blackbullindex.com",
+        },
+        {
+          c: "reply to a fumbled-airdrop story",
+          t: "The Black Bull Index literally has an identity for this: THE GHOST. The chain doesn't forget, but it allows new chapters. blackbullindex.com",
+        },
+        {
+          c: "reply to 'best Solana tools'",
+          t: "New one worth a look: Black Bull Index reads any wallet and assigns 1 of 7 on-chain identities from its $ANSEM history. blackbullindex.com",
+        },
+        {
+          c: "reply to the holders mission",
+          t: "Every wallet that checks its identity and shares the card is one more node toward 1M. That's the whole point of what I built → blackbullindex.com",
+        },
+        {
+          c: "reply to 'is it too late'",
+          t: "Paste your wallet into the Black Bull Index. If it reads you as Curious or Tourist, you already have your answer. blackbullindex.com",
+        },
+        {
+          c: "reply to a big win screenshot",
+          t: "Certified? Let the chain say it. Black Bull Index grades the wallet, not the vibes: blackbullindex.com",
+        },
+        {
+          c: "generic value reply",
+          t: "If you're curious what your on-chain history actually says about you, this reads it back with real numbers: blackbullindex.com",
+        },
+      ];
+
+      // ---------- helpers ----------
+      const toast = (m) => {
+        const el = document.getElementById("toast");
+        el.textContent = m;
+        el.classList.add("show");
+        setTimeout(() => el.classList.remove("show"), 1400);
+      };
+      const inject = (t) =>
+        t
+          .replaceAll("{price}", LIVE.price)
+          .replaceAll("{mcap}", LIVE.mcap)
+          .replaceAll("{change}", LIVE.change);
+      const intent = (t) => "https://twitter.com/intent/tweet?text=" + encodeURIComponent(t);
+      const copy = (t) => navigator.clipboard.writeText(t).then(() => toast("Copied to clipboard"));
+      // Rough tweet length: URLs count as 23 chars on X regardless of real length.
+      const tweetLen = (t) => t.replace(/https?:\/\/\S+/g, "x".repeat(23)).length;
+
+      function cardHtml(obj) {
+        const text = inject(obj.t);
+        const len = tweetLen(text);
+        const over = len > 280;
+        const id = "c" + Math.random().toString(36).slice(2);
+        window["__" + id] = text;
+        return `<div class="card">
+          <div class="cat">${obj.c}</div>
+          <div class="txt">${text.replace(/</g, "&lt;")}</div>
+          <div class="meta">
+            <span class="count ${over ? "over" : ""}">${len}/280</span>
+            <span class="btns">
+              <button class="act" onclick="copy(window.__${id})">Copy</button>
+              <button class="act tweet" onclick="window.open(intentOf('${id}'),'_blank')">Tweet →</button>
+            </span>
+          </div>
+        </div>`;
+      }
+      window.intentOf = (id) => intent(window["__" + id]);
+
+      // Deterministic day-based rotation so the "week" is stable and today is consistent.
+      function dayOfYear(d) {
+        const start = new Date(d.getFullYear(), 0, 0);
+        return Math.floor((d - start) / 86400000);
+      }
+      function pickForDay(dayIdx) {
+        // 5 tweets per day, striding through the bank so themes vary and repeats are far apart.
+        const n = TWEETS.length;
+        const out = [];
+        for (let i = 0; i < 5; i++) out.push(TWEETS[(dayIdx * 5 + i * 3) % n]);
+        return out;
+      }
+
+      function render() {
+        const doy = dayOfYear(new Date());
+        const todayDay = doy % 7; // 0..6
+
+        document.getElementById("today").innerHTML = pickForDay(doy).map(cardHtml).join("");
+
+        // 7-day calendar tabs
+        const tabs = document.getElementById("tabs");
+        const plan = document.getElementById("plan");
+        const names = ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"];
+        tabs.innerHTML = names
+          .map(
+            (nm, i) =>
+              `<button class="tab ${i === todayDay ? "active today" : ""}" onclick="showDay(${i})">${nm}</button>`,
+          )
+          .join("");
+        window.showDay = (i) => {
+          document
+            .querySelectorAll(".tab")
+            .forEach((el, idx) => el.classList.toggle("active", idx === i));
+          // base each calendar day off the current day-of-year so numbers stay live
+          plan.innerHTML = pickForDay(doy - todayDay + i)
+            .map(cardHtml)
+            .join("");
+        };
+        window.showDay(todayDay);
+
+        document.getElementById("replies").innerHTML = REPLIES.map(cardHtml).join("");
+      }
+
+      window.walletTweet = function () {
+        const w = document.getElementById("wallet").value.trim();
+        if (!w) return toast("Paste a wallet address first");
+        const url = SITE + "/result/" + encodeURIComponent(w);
+        const text =
+          "The Black Bull Index read this wallet. The chain doesn't lie.\n\n" + url + " @blknoiz06";
+        window.open(url, "_blank");
+        window.open(intent(text), "_blank");
+      };
+
+      // ---------- live $ANSEM data (DexScreener, same source as the site) ----------
+      async function loadLive() {
+        try {
+          const res = await fetch("https://api.dexscreener.com/latest/dex/tokens/" + ANSEM_MINT);
+          const data = await res.json();
+          const pair = (data.pairs || []).sort(
+            (a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0),
+          )[0];
+          if (!pair) throw new Error("no pair");
+          const price = parseFloat(pair.priceUsd || "0");
+          const ch = pair.priceChange?.h24 ?? 0;
+          const mcap = pair.marketCap || pair.fdv || 0;
+          const vol = pair.volume?.h24 || 0;
+          const fmtUsd = (v) => (v >= 1 ? "$" + v.toFixed(2) : "$" + v.toPrecision(2));
+          const fmtBig = (v) =>
+            v >= 1e9
+              ? "$" + (v / 1e9).toFixed(2) + "B"
+              : v >= 1e6
+                ? "$" + (v / 1e6).toFixed(1) + "M"
+                : "$" + Math.round(v).toLocaleString();
+          LIVE = {
+            price: fmtUsd(price),
+            change: (ch >= 0 ? "+" : "") + ch.toFixed(1) + "%",
+            mcap: fmtBig(mcap),
+            vol: fmtBig(vol),
+            changeUp: ch >= 0,
+          };
+          document.getElementById("s-price").textContent = LIVE.price;
+          const cEl = document.getElementById("s-change");
+          cEl.textContent = LIVE.change;
+          cEl.style.color = LIVE.changeUp ? "var(--up)" : "var(--down)";
+          document.getElementById("s-mcap").textContent = LIVE.mcap;
+          document.getElementById("s-vol").textContent = LIVE.vol;
+          document.getElementById("hooks").innerHTML =
+            `Trending hooks to ride today: <b>$ANSEM ${LIVE.price} (${LIVE.change} 24h)</b>, mcap <b>${LIVE.mcap}</b> · the 20,000% run · the $7M airdrop · the $2.4M fumbled-airdrop story (→ THE GHOST) · 25k→1M holders mission.`;
+        } catch (e) {
+          document.getElementById("hooks").innerHTML =
+            "Couldn't load live $ANSEM data (offline or DexScreener rate limit). Tweets use fallback numbers — edit before posting.";
+        } finally {
+          render(); // render after data so injected numbers are current
+        }
+      }
+
+      loadLive();
+    </script>
+  </body>
+</html>
