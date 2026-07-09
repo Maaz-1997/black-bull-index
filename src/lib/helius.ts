@@ -1,27 +1,26 @@
 // Server-only wallet data fetcher. Adapted from black-bull-index.md §28 to run inside a
 // TanStack Start server function (edge/worker-safe: fetch + Web APIs only).
 // Import this ONLY from server functions — it reads HELIUS_API_KEY.
+//
+// Token balances are read per-mint via getTokenAccountsByOwner (exact, regardless of how many
+// other assets the wallet holds). The earlier getAssetsByOwner approach paginated at 100 assets,
+// so whales with many tokens reported 0 ANSEM even while holding millions.
 import { ANSEM_MINT, WIF_MINT, BONK_MINT, OG_CUTOFF_DATE, ANSEM_WALLET } from "./constants";
 import { serverEnvKeys } from "./env";
 import type { WalletStats } from "./score";
 
 // --- Minimal typed shapes for the provider responses we consume ---
 
-interface HeliusTokenInfo {
-  balance?: number;
-  decimals?: number;
+interface TokenAccount {
+  account?: { data?: { parsed?: { info?: { tokenAmount?: { uiAmount?: number | null } } } } };
 }
 
-interface HeliusAsset {
-  id: string;
-  token_info?: HeliusTokenInfo;
+interface TokenAccountsResponse {
+  result?: { value?: TokenAccount[] };
 }
 
-interface HeliusAssetsResponse {
-  result?: {
-    items?: HeliusAsset[];
-    nativeBalance?: { lamports?: number };
-  };
+interface BalanceResponse {
+  result?: { value?: number };
 }
 
 interface HeliusTokenTransfer {
@@ -43,91 +42,95 @@ interface SignaturesResponse {
   result?: SignatureInfo[];
 }
 
-export interface WalletBalances {
-  ansemBalance: number;
-  solBalance: number;
-  wifBalance: number;
-  bonkBalance: number;
-}
-
 function heliusKeys(): string[] {
   const keys = serverEnvKeys("HELIUS_API_KEY");
   if (keys.length === 0) throw new Error("HELIUS_API_KEY is not set");
   return keys;
 }
 
-// Pure: turn a getAssetsByOwner response into human-readable balances. No I/O — unit-tested.
-export function parseWalletAssets(data: HeliusAssetsResponse): WalletBalances {
-  const items = data.result?.items ?? [];
-  const nativeLamports = data.result?.nativeBalance?.lamports ?? 0;
-
-  const find = (mint: string): HeliusAsset | undefined => items.find((t) => t.id === mint);
-
-  const toHuman = (asset: HeliusAsset | undefined, defaultDecimals: number): number => {
-    const info = asset?.token_info;
-    if (!info?.balance) return 0;
-    return info.balance / Math.pow(10, info.decimals ?? defaultDecimals);
-  };
-
-  return {
-    ansemBalance: toHuman(find(ANSEM_MINT), 6),
-    wifBalance: toHuman(find(WIF_MINT), 6),
-    bonkBalance: toHuman(find(BONK_MINT), 5),
-    solBalance: nativeLamports / 1e9,
-  };
-}
-
-export async function fetchWalletData(wallet: string): Promise<WalletStats> {
-  const keys = heliusKeys();
-
-  // Try each key in order; a rate-limited or failing key falls through to the next.
-  let lastError: unknown;
-  let data: HeliusAssetsResponse | null = null;
+// A Helius mainnet RPC call that falls back across keys. Returns null only when every key fails
+// (network error / non-2xx) — callers use null to distinguish "provider down" from a real 0.
+async function heliusRpc<T>(keys: string[], body: object): Promise<T | null> {
   for (const key of keys) {
     try {
       const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "black-bull-index",
-          method: "getAssetsByOwner",
-          params: {
-            ownerAddress: wallet,
-            page: 1,
-            limit: 100,
-            displayOptions: {
-              showFungible: true,
-              showNativeBalance: true,
-              showZeroBalance: false,
-            },
-          },
-        }),
+        body: JSON.stringify(body),
       });
-      if (!res.ok) {
-        lastError = new Error(`Helius error: ${res.status}`);
-        continue;
-      }
-      data = (await res.json()) as HeliusAssetsResponse;
-      break;
-    } catch (err) {
-      lastError = err;
+      if (!res.ok) continue;
+      return (await res.json()) as T;
+    } catch {
+      // Try the next key.
     }
   }
-  if (!data) throw lastError ?? new Error("Helius: all keys failed");
+  return null;
+}
 
-  const balances = parseWalletAssets(data);
+// Pure: sum the uiAmount across a getTokenAccountsByOwner response. No I/O — unit-tested.
+export function parseTokenAccounts(data: TokenAccountsResponse): number {
+  const accounts = data.result?.value ?? [];
+  let total = 0;
+  for (const acct of accounts) {
+    const ui = acct.account?.data?.parsed?.info?.tokenAmount?.uiAmount;
+    if (typeof ui === "number") total += ui;
+  }
+  return total;
+}
+
+// Exact balance of a single mint for an owner. null → provider failure (not a real 0 balance).
+async function fetchTokenBalance(
+  keys: string[],
+  owner: string,
+  mint: string,
+): Promise<number | null> {
+  const data = await heliusRpc<TokenAccountsResponse>(keys, {
+    jsonrpc: "2.0",
+    id: "bbi-token",
+    method: "getTokenAccountsByOwner",
+    params: [owner, { mint }, { encoding: "jsonParsed" }],
+  });
+  return data ? parseTokenAccounts(data) : null;
+}
+
+async function fetchSolBalance(keys: string[], owner: string): Promise<number | null> {
+  const data = await heliusRpc<BalanceResponse>(keys, {
+    jsonrpc: "2.0",
+    id: "bbi-sol",
+    method: "getBalance",
+    params: [owner],
+  });
+  return data ? (data.result?.value ?? 0) / 1e9 : null;
+}
+
+export async function fetchWalletData(wallet: string): Promise<WalletStats> {
+  const keys = heliusKeys();
+
+  const [ansem, wif, bonk, sol] = await Promise.all([
+    fetchTokenBalance(keys, wallet, ANSEM_MINT),
+    fetchTokenBalance(keys, wallet, WIF_MINT),
+    fetchTokenBalance(keys, wallet, BONK_MINT),
+    fetchSolBalance(keys, wallet),
+  ]);
+
+  // The ANSEM balance is the core signal — if every key failed to return it, surface an error
+  // (analyze.ts maps this to PROVIDER_DOWN) rather than silently scoring a holder as 0.
+  if (ansem === null) throw new Error("Helius: all keys failed for ANSEM balance");
+
   const history = await checkHistory(wallet, keys);
 
   return {
     walletAddress: wallet,
-    ...balances,
+    ansemBalance: ansem,
+    wifBalance: wif ?? 0,
+    bonkBalance: bonk ?? 0,
+    solBalance: sol ?? 0,
     ...history,
   };
 }
 
-// OG status, airdrop receipt, and wallet age. Best-effort within a single call per provider.
-// On any failure we return safe defaults (false / 0) so scoring still produces a result.
+// OG status, airdrop receipt, and wallet age. Best-effort — on any failure we return safe
+// defaults (false / 0) so scoring still produces a result.
 //
 // Heuristic limits (documented per steering C4):
 //  - OG/airdrop use Helius enhanced transactions (last 25 TOKEN_TRANSFERs). A wallet whose
@@ -146,28 +149,14 @@ async function checkHistory(
   try {
     // Wallet age via Helius RPC (the free public RPC at api.mainnet-beta.solana.com is heavily
     // throttled and was failing silently → age defaulted to 0). Falls back across keys.
-    let page: SignatureInfo[] = [];
-    for (const key of keys) {
-      try {
-        const sigRes = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: "bbi-wallet-age",
-            method: "getSignaturesForAddress",
-            params: [wallet, { limit: 1000 }],
-          }),
-        });
-        if (!sigRes.ok) continue;
-        const sigData = (await sigRes.json()) as SignaturesResponse;
-        page = sigData.result ?? [];
-        break;
-      } catch {
-        // Try the next key.
-      }
-    }
+    const sigData = await heliusRpc<SignaturesResponse>(keys, {
+      jsonrpc: "2.0",
+      id: "bbi-wallet-age",
+      method: "getSignaturesForAddress",
+      params: [wallet, { limit: 1000 }],
+    });
     // getSignaturesForAddress returns newest-first; the oldest in the page is the last element.
+    const page = sigData?.result ?? [];
     const oldest = page[page.length - 1];
     if (oldest?.blockTime) {
       walletAgeDays = Math.floor((Date.now() / 1000 - oldest.blockTime) / 86400);

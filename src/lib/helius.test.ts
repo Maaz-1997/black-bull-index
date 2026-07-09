@@ -1,43 +1,37 @@
 import { test, expect } from "bun:test";
-import { parseWalletAssets } from "./helius";
-import { ANSEM_MINT, WIF_MINT, BONK_MINT } from "./constants";
+import { parseTokenAccounts } from "./helius";
 
-test("parses balances with per-token decimals and SOL from lamports", () => {
-  const b = parseWalletAssets({
+// getTokenAccountsByOwner (jsonParsed) response shape — uiAmount is already human-readable.
+function accts(...amounts: (number | null)[]) {
+  return {
     result: {
-      items: [
-        { id: ANSEM_MINT, token_info: { balance: 500_000_000_000, decimals: 6 } }, // 500,000
-        { id: WIF_MINT, token_info: { balance: 2_000_000, decimals: 6 } }, // 2
-        { id: BONK_MINT, token_info: { balance: 100_000_000, decimals: 5 } }, // 1,000
-      ],
-      nativeBalance: { lamports: 2_500_000_000 }, // 2.5 SOL
+      value: amounts.map((uiAmount) => ({
+        account: { data: { parsed: { info: { tokenAmount: { uiAmount } } } } },
+      })),
     },
-  });
-  expect(b.ansemBalance).toBe(500_000);
-  expect(b.wifBalance).toBe(2);
-  expect(b.bonkBalance).toBe(1_000);
-  expect(b.solBalance).toBe(2.5);
+  };
+}
+
+test("sums uiAmount across token accounts for a mint", () => {
+  expect(parseTokenAccounts(accts(1_500_000))).toBe(1_500_000);
+  // A mint can have more than one token account for the same owner — sum them.
+  expect(parseTokenAccounts(accts(1_000_000, 500_000))).toBe(1_500_000);
 });
 
-test("missing tokens and empty result resolve to zero", () => {
-  expect(parseWalletAssets({})).toEqual({
-    ansemBalance: 0,
-    wifBalance: 0,
-    bonkBalance: 0,
-    solBalance: 0,
-  });
-
-  const onlyAnsem = parseWalletAssets({
-    result: { items: [{ id: ANSEM_MINT, token_info: { balance: 10_000_000, decimals: 6 } }] },
-  });
-  expect(onlyAnsem.ansemBalance).toBe(10);
-  expect(onlyAnsem.wifBalance).toBe(0);
-  expect(onlyAnsem.solBalance).toBe(0);
+test("empty / missing / null balances resolve to zero", () => {
+  expect(parseTokenAccounts({})).toBe(0);
+  expect(parseTokenAccounts({ result: { value: [] } })).toBe(0);
+  expect(parseTokenAccounts(accts(null))).toBe(0);
 });
 
-test("falls back to default decimals when the asset omits them", () => {
-  const b = parseWalletAssets({
-    result: { items: [{ id: ANSEM_MINT, token_info: { balance: 1_000_000 } }] }, // default 6
-  });
-  expect(b.ansemBalance).toBe(1);
+test("ignores malformed accounts without a numeric uiAmount", () => {
+  const data = {
+    result: {
+      value: [
+        { account: { data: { parsed: { info: {} } } } },
+        { account: { data: { parsed: { info: { tokenAmount: { uiAmount: 42 } } } } } },
+      ],
+    },
+  };
+  expect(parseTokenAccounts(data)).toBe(42);
 });
