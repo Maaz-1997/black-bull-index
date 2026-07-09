@@ -53,6 +53,12 @@ test("CardImage renders to a real PNG via @cf-wasm/og", async () => {
       roast="Your wallet does not require a roast. It requires documentation."
       rank="#3 · Top 3%"
       isOg={true}
+      ansem="500K"
+      usd="$150K"
+      price="$0.30"
+      wif={true}
+      bonk={true}
+      handle=""
     />,
     { width: 1200, height: 630, format: "png", fonts: [] },
   );

@@ -276,10 +276,32 @@ export function startLoadingDrone(): () => void {
   o2.start(t0);
   lfo.start(t0);
 
+  // Audible "computation" — short blips scanning up/down, so loading has presence on any speaker
+  // (the sub-bass drone alone is inaudible on laptop/phone speakers).
+  const scan = [1046, 1318, 1568, 1318, 1174, 880];
+  let step = 0;
+  const tick = () => {
+    if (!enabled) return;
+    const now = c.currentTime + 0.005;
+    const o = c.createOscillator();
+    o.type = "triangle";
+    o.frequency.value = scan[step % scan.length];
+    step++;
+    const tg = c.createGain();
+    tg.gain.setValueAtTime(0.0001, now);
+    tg.gain.exponentialRampToValueAtTime(0.14, now + 0.008);
+    tg.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
+    o.connect(tg).connect(master as GainNode);
+    o.start(now);
+    o.stop(now + 0.13);
+  };
+  const tickTimer = setInterval(tick, 200);
+
   let stopped = false;
   return () => {
     if (stopped || !c) return;
     stopped = true;
+    clearInterval(tickTimer);
     const tn = c.currentTime;
     g.gain.cancelScheduledValues(tn);
     g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), tn);

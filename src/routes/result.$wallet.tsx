@@ -4,7 +4,13 @@ import { motion } from "framer-motion";
 import { ArrowUpRight, RotateCcw, Download, Trophy, Sparkles } from "lucide-react";
 import { analyze, reroast, type AnalyzeResult } from "@/lib/analyze";
 import { BREAKDOWN_LABELS } from "@/lib/constants";
-import { buildOgImageUrl, buildOgImagePath, buildImagePath, buildShareText } from "@/lib/og-card";
+import {
+  buildOgImageUrl,
+  buildOgImagePath,
+  buildImagePath,
+  buildShareText,
+  sanitizeHandle,
+} from "@/lib/og-card";
 import {
   Accordion,
   AccordionItem,
@@ -371,6 +377,18 @@ function Reveal({ data }: { data: AnalyzeResult }) {
   const current = { ...data, roast }; // share card + downloads reflect the live roast
   const score = useCountUp(data.score);
 
+  // The sharer's own X handle, printed on the downloadable cards. Persisted so it's remembered.
+  const [handle, setHandle] = useState("");
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("bbi-handle") : null;
+    if (saved) setHandle(saved);
+  }, []);
+  const onHandle = (v: string) => {
+    const clean = sanitizeHandle(v);
+    setHandle(clean);
+    if (typeof window !== "undefined") window.localStorage.setItem("bbi-handle", clean);
+  };
+
   // The verdict lands.
   useEffect(() => {
     playCue("impact");
@@ -422,6 +440,23 @@ function Reveal({ data }: { data: AnalyzeResult }) {
           style={{
             maskImage: "linear-gradient(90deg, transparent 0%, black 42%)",
             WebkitMaskImage: "linear-gradient(90deg, transparent 0%, black 42%)",
+          }}
+        />
+      </div>
+
+      {/* Mobile: the bull sits large behind the content, faded so the copy stays legible. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center lg:hidden">
+        <div
+          className="absolute left-1/2 top-[18%] h-[420px] w-[420px] -translate-x-1/2 blur-3xl"
+          style={{ background: `radial-gradient(circle at 50% 40%, ${c}2e, transparent 62%)` }}
+        />
+        <img
+          src={bull}
+          alt=""
+          className="relative h-[70vh] w-auto object-contain opacity-[0.14] drop-shadow-[0_40px_90px_rgba(0,0,0,0.9)]"
+          style={{
+            maskImage: "linear-gradient(180deg, black 34%, transparent 82%)",
+            WebkitMaskImage: "linear-gradient(180deg, black 34%, transparent 82%)",
           }}
         />
       </div>
@@ -552,18 +587,35 @@ function Reveal({ data }: { data: AnalyzeResult }) {
               </div>
             </div>
 
+            <div>
+              <label className="font-mono text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+                Your X handle — printed on the card
+              </label>
+              <div className="mt-3 flex items-center rounded-full border border-white/[0.1] bg-black/40 px-4 h-11 focus-within:border-[#d8b15a]/50 transition">
+                <span className="font-mono text-[14px] text-[#e7c877]">@</span>
+                <input
+                  value={handle}
+                  onChange={(e) => onHandle(e.target.value)}
+                  placeholder="yourhandle"
+                  aria-label="Your X handle"
+                  maxLength={15}
+                  className="ml-1 flex-1 bg-transparent font-mono text-[14px] text-white placeholder:text-white/25 outline-none"
+                />
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-3">
               <ShareButton data={current} />
-              <DownloadButton data={current} />
+              <DownloadButton data={current} handle={handle} />
               <a
-                href={buildImagePath(current, "pfp")}
+                href={buildImagePath(current, "pfp", handle)}
                 download={`black-bull-pfp-${data.grade}.png`}
                 className="inline-flex items-center gap-2 h-11 px-5 rounded-full border border-white/[0.1] text-[13px] text-white/80 hover:bg-white/[0.05] transition"
               >
                 <Download className="h-4 w-4" /> PFP
               </a>
               <a
-                href={buildImagePath(current, "banner")}
+                href={buildImagePath(current, "banner", handle)}
                 download={`black-bull-banner-${data.grade}.png`}
                 className="inline-flex items-center gap-2 h-11 px-5 rounded-full border border-white/[0.1] text-[13px] text-white/80 hover:bg-white/[0.05] transition"
               >
@@ -617,14 +669,14 @@ function ReRoastButton({ wallet, onRoast }: { wallet: string; onRoast: (roast: s
 
 // Downloadable animated card (GIF) the user can attach to a tweet as media. Rendered client-side;
 // gifenc/canvas are dynamically imported so they stay out of the initial reveal bundle.
-function DownloadButton({ data }: { data: AnalyzeResult }) {
+function DownloadButton({ data, handle }: { data: AnalyzeResult; handle: string }) {
   const [busy, setBusy] = useState(false);
   const onDownload = async () => {
     setBusy(true);
     try {
       const { downloadAnimatedCard } = await import("@/lib/download-card");
       await downloadAnimatedCard(
-        buildOgImagePath(data),
+        buildOgImagePath(data, handle),
         `black-bull-${data.grade}-${data.wallet.slice(0, 4)}.gif`,
       );
     } catch (err) {

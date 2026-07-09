@@ -144,19 +144,30 @@ async function checkHistory(
   let walletAgeDays = 0;
 
   try {
-    // Wallet age via public RPC (no key needed).
-    const sigRes = await fetch("https://api.mainnet-beta.solana.com", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getSignaturesForAddress",
-        params: [wallet, { limit: 1000 }],
-      }),
-    });
-    const sigData = (await sigRes.json()) as SignaturesResponse;
-    const page = sigData.result ?? [];
+    // Wallet age via Helius RPC (the free public RPC at api.mainnet-beta.solana.com is heavily
+    // throttled and was failing silently → age defaulted to 0). Falls back across keys.
+    let page: SignatureInfo[] = [];
+    for (const key of keys) {
+      try {
+        const sigRes = await fetch(`https://mainnet.helius-rpc.com/?api-key=${key}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "bbi-wallet-age",
+            method: "getSignaturesForAddress",
+            params: [wallet, { limit: 1000 }],
+          }),
+        });
+        if (!sigRes.ok) continue;
+        const sigData = (await sigRes.json()) as SignaturesResponse;
+        page = sigData.result ?? [];
+        break;
+      } catch {
+        // Try the next key.
+      }
+    }
+    // getSignaturesForAddress returns newest-first; the oldest in the page is the last element.
     const oldest = page[page.length - 1];
     if (oldest?.blockTime) {
       walletAgeDays = Math.floor((Date.now() / 1000 - oldest.blockTime) / 86400);

@@ -28,6 +28,7 @@ export interface CardParams {
   price: string; // formatted live $ANSEM price, e.g. "$0.30" ("" if unknown)
   wif: boolean; // holds WIF
   bonk: boolean; // holds BONK
+  handle: string; // the sharer's X handle (no @), "" if not provided
   bull?: string; // bull emblem data URI — injected server-side by the image routes only
 }
 
@@ -65,7 +66,7 @@ function buildChips(p: CardParams) {
 // Premium 1200×630 card — the ad that unfurls on X. Satori rule: every div with children needs
 // display:flex. The bull sits on the right behind a grade-tinted glow; text stays gold-forward.
 export function CardImage(p: CardParams) {
-  const { name, grade, score, colour, wallet, roast, rank, isOg, price, bull } = p;
+  const { name, grade, score, colour, wallet, roast, rank, isOg, price, handle, bull } = p;
   return (
     <div
       style={{
@@ -227,7 +228,9 @@ export function CardImage(p: CardParams) {
               color: "#8a8177",
             }}
           >
-            <div style={{ display: "flex" }}>{wallet}</div>
+            <div style={{ display: "flex", color: handle ? GOLD : "#8a8177" }}>
+              {handle ? `@${handle}` : wallet}
+            </div>
             <div style={{ display: "flex" }}>blackbullindex.com · @blknoiz06</div>
           </div>
         </div>
@@ -347,7 +350,7 @@ export function PfpImage(p: CardParams) {
 
 // 1500×500 X header banner — bull on the right, gold-forward text on the left.
 export function BannerImage(p: CardParams) {
-  const { name, grade, score, colour, roast, rank, isOg, price, bull } = p;
+  const { name, grade, score, colour, roast, rank, isOg, price, handle, bull } = p;
   return (
     <div
       style={{
@@ -440,7 +443,7 @@ export function BannerImage(p: CardParams) {
             marginTop: 14,
           }}
         >
-          blackbullindex.com · @blknoiz06
+          {handle ? `@${handle} · ` : ""}blackbullindex.com · @blknoiz06
         </div>
       </div>
       <div
@@ -483,7 +486,17 @@ export function parseCardParams(q: URLSearchParams): CardParams {
     price: q.get("price") ?? "",
     wif: q.get("wif") === "1",
     bonk: q.get("bonk") === "1",
+    handle: sanitizeHandle(q.get("handle") ?? ""),
   };
+}
+
+// X handles: strip a leading @, keep only [A-Za-z0-9_], cap at 15 chars (X's limit).
+export function sanitizeHandle(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[^A-Za-z0-9_]/g, "")
+    .slice(0, 15);
 }
 
 export function buildFallbackSvg(p: CardParams): string {
@@ -511,10 +524,10 @@ function rankLabel(r: AnalyzeResult): string {
   return `#${r.rank}${r.percentile ? ` · TOP ${r.percentile}%` : ""}`;
 }
 
-function ogParams(r: AnalyzeResult): string {
+function ogParams(r: AnalyzeResult, handle = ""): string {
   const holdings = r.stats.ansemBalance;
   const usd = holdings > 0 && r.ansemPrice > 0 ? `$${compact(holdings * r.ansemPrice)}` : "";
-  return new URLSearchParams({
+  const params = new URLSearchParams({
     name: r.identity.name,
     grade: r.grade,
     score: String(r.score),
@@ -528,23 +541,30 @@ function ogParams(r: AnalyzeResult): string {
     price: r.ansemPrice > 0 ? fmtUsd(r.ansemPrice) : "",
     wif: r.stats.wifBalance > 0 ? "1" : "0",
     bonk: r.stats.bonkBalance > 0 ? "1" : "0",
-  }).toString();
+  });
+  const clean = sanitizeHandle(handle);
+  if (clean) params.set("handle", clean);
+  return params.toString();
 }
 
 // Absolute URL to the OG card (for crawler-facing share meta).
-export function buildOgImageUrl(r: AnalyzeResult): string {
-  return `${SITE_URL}/api/og?${ogParams(r)}`;
+export function buildOgImageUrl(r: AnalyzeResult, handle = ""): string {
+  return `${SITE_URL}/api/og?${ogParams(r, handle)}`;
 }
 
 // Same-origin path for a given image route (og card / pfp / banner). Used by the client for the
 // animated-card fetch and the PFP/banner download links.
-export function buildImagePath(r: AnalyzeResult, kind: "og" | "pfp" | "banner"): string {
-  return `/api/${kind}?${ogParams(r)}`;
+export function buildImagePath(
+  r: AnalyzeResult,
+  kind: "og" | "pfp" | "banner",
+  handle = "",
+): string {
+  return `/api/${kind}?${ogParams(r, handle)}`;
 }
 
 // Same-origin path (for in-browser fetch, e.g. the downloadable animated card).
-export function buildOgImagePath(r: AnalyzeResult): string {
-  return buildImagePath(r, "og");
+export function buildOgImagePath(r: AnalyzeResult, handle = ""): string {
+  return buildImagePath(r, "og", handle);
 }
 
 // Pre-filled X share text — tags @blknoiz06, keeps the Identity/score/rank in the tweet body. Spec §17.
