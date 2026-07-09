@@ -1,0 +1,20 @@
+# Cloudflare deploy config for the Nitro build.
+# The app reads the D1 binding as `globalThis.__env__.DB`, so the binding name MUST be "DB".
+#
+# One-time setup (P6-I1):
+#   1. wrangler d1 create black-bull-index      # copy the returned database_id below
+#   2. wrangler d1 migrations apply black-bull-index
+#   3. wrangler secret put HELIUS_API_KEY
+#   4. wrangler secret put GROQ_API_KEY
+#
+# Nitro emits .output/server/wrangler.json at build; deploy with `wrangler deploy` (or nitro deploy).
+
+name = "black-bull-index"
+compatibility_date = "2026-07-08"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "black-bull-index"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
